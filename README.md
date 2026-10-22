@@ -1,0 +1,1 @@
+nzip -o Despierta-proyecto.zip && git add app .github build.gradle.kts settings.gradle.kts gradle.properties README.md && git commit -m "Subir Despierta" && g
