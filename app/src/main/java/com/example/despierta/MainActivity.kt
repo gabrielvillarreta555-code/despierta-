@@ -126,6 +126,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable private fun AlarmEditor(initial: AlarmModel, onDismiss: () -> Unit, onSave: (AlarmModel) -> Unit) {
         var hour by remember(initial.id) { mutableIntStateOf(initial.hour) }
         var minute by remember(initial.id) { mutableIntStateOf(initial.minute) }

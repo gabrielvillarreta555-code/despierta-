@@ -14,7 +14,7 @@ class AlarmScheduler(private val context: Context) {
         cancel(alarm.id)
         if (!alarm.enabled) return
         val trigger = nextTrigger(alarm)
-        val pending = pendingIntent(alarm.id, PendingIntent.FLAG_UPDATE_CURRENT)
+        val pending = requireNotNull(pendingIntent(alarm.id, PendingIntent.FLAG_UPDATE_CURRENT))
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()) {
             manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger.timeInMillis, pending)
         } else {
@@ -22,7 +22,9 @@ class AlarmScheduler(private val context: Context) {
         }
     }
 
-    fun cancel(id: Int) = manager.cancel(pendingIntent(id, PendingIntent.FLAG_NO_CREATE) ?: return)
+    fun cancel(id: Int) {
+        pendingIntent(id, PendingIntent.FLAG_NO_CREATE)?.let(manager::cancel)
+    }
 
     private fun pendingIntent(id: Int, flag: Int): PendingIntent? = PendingIntent.getBroadcast(
         context, id, Intent(context, AlarmReceiver::class.java).putExtra(EXTRA_ID, id),
