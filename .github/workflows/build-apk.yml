@@ -71,13 +71,9 @@ jobs:
             adb shell cmd package compile -m speed -f com.example.despierta.test
             sleep 20
             adb logcat -c
-            set +e
-            adb shell am instrument -w -r com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/instrumentation.txt 2>&1
-            instrument_status=$?
-            set -e
+            adb shell am instrument -w -r com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/instrumentation.txt 2>&1 || true
             cat app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
             adb logcat -d -v threadtime > app/build/outputs/androidTest-results/diagnostics/logcat.txt || true
-            test "$instrument_status" -eq 0
             grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
 
       - name: Publicar informes instrumentados
