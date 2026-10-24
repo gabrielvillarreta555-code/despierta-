@@ -325,9 +325,13 @@ class MainActivity : ComponentActivity() {
                 }
                 Text(alarm.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val labelText = if (alarm.snoozedUntilMillis != null) {
+                        "Pospuesta · " + (if (alarm.shiftPattern != null) "Turno ${alarm.shiftPattern.workDays}x${alarm.shiftPattern.restDays}" else daysLabel(alarm.days))
+                    } else {
+                        if (alarm.shiftPattern != null) "Turno ${alarm.shiftPattern.workDays}x${alarm.shiftPattern.restDays}" else daysLabel(alarm.days)
+                    }
                     Text(
-                        if (alarm.snoozedUntilMillis != null) "Pospuesta · ${daysLabel(alarm.days)}"
-                        else daysLabel(alarm.days),
+                        labelText,
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 12.sp,
                         modifier = Modifier.weight(1f)
@@ -378,6 +382,11 @@ class MainActivity : ComponentActivity() {
         var days by remember(initial.id) { mutableStateOf(initial.days) }
         var soundUri by remember(initial.id) { mutableStateOf(initial.soundUri) }
         var mathChallenge by remember(initial.id) { mutableStateOf(initial.mathChallengeEnabled) }
+        var useShift by remember(initial.id) { mutableStateOf(initial.shiftPattern != null) }
+        var workDays by remember(initial.id) { mutableStateOf(initial.shiftPattern?.workDays?.toString() ?: "12") }
+        var restDays by remember(initial.id) { mutableStateOf(initial.shiftPattern?.restDays?.toString() ?: "4") }
+        var startDateMillis by remember(initial.id) { mutableStateOf(initial.shiftPattern?.startDateMillis ?: System.currentTimeMillis()) }
+
         val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let { uri ->
                 soundUri = uri.toString()
@@ -403,19 +412,60 @@ class MainActivity : ComponentActivity() {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text("Repetir", fontWeight = FontWeight.SemiBold)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf("D", "L", "M", "X", "J", "V", "S").forEachIndexed { index, text ->
-                            val day = index + 1
-                            FilterChip(
-                                selected = day in days,
-                                onClick = { days = if (day in days) days - day else days + day },
-                                label = { Text(text) }
+                        Text("Usar sistema de turnos", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Switch(checked = useShift, onCheckedChange = { useShift = it })
+                    }
+
+                    if (useShift) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = workDays,
+                                onValueChange = { workDays = it.filter { char -> char.isDigit() } },
+                                label = { Text("Días trabajo") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
                             )
+                            OutlinedTextField(
+                                value = restDays,
+                                onValueChange = { restDays = it.filter { char -> char.isDigit() } },
+                                label = { Text("Días descanso") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                // Since we can't implement a full DatePicker without significantly expanding the imports
+                                // and adding complex Material3 components, we reset the cycle start date to "today".
+                                // This provides a functional, albeit simple, way to sync the start of the shift cycle.
+                                startDateMillis = System.currentTimeMillis()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Rounded.WarningAmber, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sincronizar inicio de ciclo hoy")
+                        }
+                    } else {
+                        Text("Repetir", fontWeight = FontWeight.SemiBold)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            listOf("D", "L", "M", "X", "J", "V", "S").forEachIndexed { index, text ->
+                                val day = index + 1
+                                FilterChip(
+                                    selected = day in days,
+                                    onClick = { days = if (day in days) days - day else days + day },
+                                    label = { Text(text) }
+                                )
+                            }
                         }
                     }
                     Row(
@@ -447,12 +497,20 @@ class MainActivity : ComponentActivity() {
             confirmButton = {
                 Button(
                     onClick = {
+                            val pattern = if (useShift) {
+                                val w = workDays.toIntOrNull() ?: 12
+                                val r = restDays.toIntOrNull() ?: 4
+                                val startMillis = startDateMillis
+                                ShiftPattern(startMillis, w, r, initial.shiftPattern?.exceptions ?: emptySet())
+                            } else null
+
                         onSave(
                             initial.copy(
                                 hour = timePickerState.hour,
                                 minute = timePickerState.minute,
                                 label = label.ifBlank { "Alarma" },
-                                days = days,
+                                    days = if (useShift) emptySet() else days,
+                                    shiftPattern = pattern,
                                 soundUri = soundUri.ifBlank { AlarmStore.defaultAlarmUri() },
                                 enabled = true,
                                 mathChallengeEnabled = mathChallenge,
