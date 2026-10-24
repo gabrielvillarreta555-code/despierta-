@@ -35,11 +35,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
 
         AlarmLog.info("receiver_fired", "id=$id snooze=$isSnooze receivedAt=$now")
-        val updated = when {
-            isSnooze -> alarm.copy(snoozedUntilMillis = null)
-            alarm.days.isEmpty() -> alarm.copy(enabled = false, snoozedUntilMillis = null)
-            else -> alarm.copy(snoozedUntilMillis = null)
-        }
+        val updated = stateAfterFiring(alarm, isSnooze)
         store.save(updated)
 
         try {
@@ -56,12 +52,21 @@ class AlarmReceiver : BroadcastReceiver() {
 
         // setAlarmClock() is one-shot. Re-register repeating alarms immediately;
         // a one-time alarm stays disabled but can still be explicitly snoozed.
-        if (updated.enabled && updated.days.isNotEmpty()) {
+        if (updated.enabled && isRecurring(updated)) {
             AlarmScheduler(context).schedule(updated)
         }
     }
 
     companion object {
         private const val EARLY_TOLERANCE_MILLIS = 30_000L
+
+        internal fun isRecurring(alarm: AlarmModel): Boolean =
+            alarm.days.isNotEmpty() || alarm.shiftPattern?.isValid == true
+
+        internal fun stateAfterFiring(alarm: AlarmModel, isSnooze: Boolean): AlarmModel = when {
+            isSnooze -> alarm.copy(snoozedUntilMillis = null)
+            isRecurring(alarm) -> alarm.copy(snoozedUntilMillis = null)
+            else -> alarm.copy(enabled = false, snoozedUntilMillis = null)
+        }
     }
 }

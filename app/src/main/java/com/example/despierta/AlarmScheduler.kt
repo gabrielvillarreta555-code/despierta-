@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import java.time.Instant
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import java.util.TimeZone
 
@@ -18,29 +21,36 @@ class AlarmScheduler(context: Context) {
         cancel(alarm.id)
 
         val snoozeAt = alarm.snoozedUntilMillis
-        val triggerAt = when {
-            snoozeAt != null && snoozeAt > nowMillis -> snoozeAt
-            alarm.enabled -> nextTriggerMillis(alarm, nowMillis)
-            else -> {
-                AlarmLog.info("schedule_skipped", "id=${alarm.id} reason=disabled")
-                return ScheduleResult.NOT_SCHEDULED
-            }
+        if ((snoozeAt == null || snoozeAt <= nowMillis) && !alarm.enabled) {
+            AlarmLog.info("schedule_skipped", "id=${alarm.id} reason=disabled")
+            return ScheduleResult.NOT_SCHEDULED
         }
 
-        val firingIntent = requireNotNull(
-            alarmPendingIntent(alarm.id, PendingIntent.FLAG_UPDATE_CURRENT)
-        )
-        val showIntent = PendingIntent.getActivity(
-            appContext,
-            alarm.id,
-            Intent(appContext, MainActivity::class.java)
-                .setAction(ACTION_SHOW_ALARMS)
-                .setData(alarmUri(alarm.id, "show"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
+        var resolvedTriggerAt: Long? = null
+        var resolvedFiringIntent: PendingIntent? = null
         return try {
+            // Keep trigger calculation inside the guarded block. Invalid persisted data
+            // must never crash the UI, boot receiver, or reconciliation of other alarms.
+            val triggerAt = if (snoozeAt != null && snoozeAt > nowMillis) {
+                snoozeAt
+            } else {
+                nextTriggerMillis(alarm, nowMillis)
+            }
+            resolvedTriggerAt = triggerAt
+            val firingIntent = requireNotNull(
+                alarmPendingIntent(alarm.id, PendingIntent.FLAG_UPDATE_CURRENT)
+            )
+            resolvedFiringIntent = firingIntent
+            val showIntent = PendingIntent.getActivity(
+                appContext,
+                alarm.id,
+                Intent(appContext, MainActivity::class.java)
+                    .setAction(ACTION_SHOW_ALARMS)
+                    .setData(alarmUri(alarm.id, "show"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
             if (canScheduleExactAlarms()) {
                 manager.setAlarmClock(
                     AlarmManager.AlarmClockInfo(triggerAt, showIntent),
@@ -63,10 +73,14 @@ class AlarmScheduler(context: Context) {
             }
         } catch (error: SecurityException) {
             AlarmLog.error("schedule_security_error", "id=${alarm.id}", error)
-            runCatching {
-                manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, firingIntent)
-            }.onFailure {
-                AlarmLog.error("schedule_fallback_failed", "id=${alarm.id}", it)
+            val triggerAt = resolvedTriggerAt
+            val firingIntent = resolvedFiringIntent
+            if (triggerAt != null && firingIntent != null) {
+                runCatching {
+                    manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, firingIntent)
+                }.onFailure {
+                    AlarmLog.error("schedule_fallback_failed", "id=${alarm.id}", it)
+                }
             }
             ScheduleResult.INEXACT_PERMISSION_REQUIRED
         } catch (error: RuntimeException) {
@@ -84,7 +98,10 @@ class AlarmScheduler(context: Context) {
     }
 
     fun reconcile(alarms: List<AlarmModel>) {
-        alarms.forEach { schedule(it) }
+        alarms.forEach { alarm ->
+            runCatching { schedule(alarm) }
+                .onFailure { AlarmLog.error("reconcile_alarm_failed", "id=${alarm.id}", it) }
+        }
         AlarmLog.info(
             "reconcile_complete",
             "count=${alarms.count { it.enabled || it.snoozedUntilMillis != null }}"
@@ -135,40 +152,49 @@ class AlarmScheduler(context: Context) {
                 set(Calendar.MILLISECOND, 0)
             }
 
-            if (alarm.shiftPattern != null) {
-                val shift = alarm.shiftPattern
-                val totalCycleDays = shift.workDays + shift.restDays
-                if (totalCycleDays <= 0) return fallbackTrigger(candidate, now, alarm) // Fallback if invalid shift
-
-                repeat(365) { // Search up to a year for a valid shift day
-                    if (candidate.after(now)) {
-                        val midnightCandidate = Calendar.getInstance(timeZone).apply {
-                            timeInMillis = candidate.timeInMillis
-                            set(Calendar.HOUR_OF_DAY, 0)
-                            set(Calendar.MINUTE, 0)
-                            set(Calendar.SECOND, 0)
-                            set(Calendar.MILLISECOND, 0)
-                        }.timeInMillis
-
-                        // Check if it's an exception
-                        if (!shift.exceptions.contains(midnightCandidate)) {
-                            // Calculate days since start
-                            val diffMillis = midnightCandidate - shift.startDateMillis
-                            if (diffMillis >= 0) {
-                                val daysSinceStart = diffMillis / (1000 * 60 * 60 * 24)
-                                val cycleDay = daysSinceStart % totalCycleDays
-                                if (cycleDay < shift.workDays) {
-                                    return candidate.timeInMillis
-                                }
-                            }
-                        }
-                    }
-                    candidate.add(Calendar.DAY_OF_YEAR, 1)
-                }
-                error("No se encontró un día válido de turno para la alarma ${alarm.id}")
+            alarm.shiftPattern?.let {
+                return nextShiftTriggerMillis(alarm, nowMillis, timeZone)
             }
 
             return fallbackTrigger(candidate, now, alarm)
+        }
+
+        private fun nextShiftTriggerMillis(
+            alarm: AlarmModel,
+            nowMillis: Long,
+            timeZone: TimeZone
+        ): Long {
+            val shift = requireNotNull(alarm.shiftPattern)
+            require(shift.isValid) { "Patrón de turno inválido para la alarma ${alarm.id}" }
+            require(alarm.hour in 0..23 && alarm.minute in 0..59) {
+                "Hora inválida para la alarma ${alarm.id}"
+            }
+
+            val zoneId = timeZone.toZoneId()
+            val now = Instant.ofEpochMilli(nowMillis).atZone(zoneId)
+            val startDate = LocalDate.ofEpochDay(shift.startEpochDay)
+            var candidateDate = now.toLocalDate()
+
+            repeat(MAX_SHIFT_SEARCH_DAYS) {
+                val triggerAt = candidateDate
+                    .atTime(alarm.hour, alarm.minute)
+                    .atZone(zoneId)
+                    .toInstant()
+                    .toEpochMilli()
+                val daysSinceStart = ChronoUnit.DAYS.between(startDate, candidateDate)
+                if (
+                    triggerAt > nowMillis &&
+                    daysSinceStart >= 0 &&
+                    candidateDate.toEpochDay() !in shift.exceptionEpochDays
+                ) {
+                    val cycleDay = (daysSinceStart % shift.cycleDays).toInt()
+                    if (cycleDay < shift.workDays) return triggerAt
+                }
+                candidateDate = candidateDate.plusDays(1)
+            }
+            throw IllegalArgumentException(
+                "No se encontró un día válido de turno para la alarma ${alarm.id}"
+            )
         }
 
         private fun fallbackTrigger(candidate: Calendar, now: Calendar, alarm: AlarmModel): Long {
@@ -188,6 +214,8 @@ class AlarmScheduler(context: Context) {
 
         private fun alarmUri(id: Int, operation: String): Uri =
             Uri.parse("despierta://alarm/$id/$operation")
+
+        private const val MAX_SHIFT_SEARCH_DAYS = 3_660
     }
 }
 
