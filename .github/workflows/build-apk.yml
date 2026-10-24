@@ -62,3 +62,14 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: ./gradlew connectedDebugAndroidTest --stacktrace
+
+      - name: Publicar informes instrumentados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Despierta-Pruebas-Android16
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: warn
+          retention-days: 14
