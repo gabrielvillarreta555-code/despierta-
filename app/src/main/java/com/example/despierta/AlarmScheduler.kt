@@ -135,6 +135,43 @@ class AlarmScheduler(context: Context) {
                 set(Calendar.MILLISECOND, 0)
             }
 
+            if (alarm.shiftPattern != null) {
+                val shift = alarm.shiftPattern
+                val totalCycleDays = shift.workDays + shift.restDays
+                if (totalCycleDays <= 0) return fallbackTrigger(candidate, now, alarm) // Fallback if invalid shift
+
+                repeat(365) { // Search up to a year for a valid shift day
+                    if (candidate.after(now)) {
+                        val midnightCandidate = Calendar.getInstance(timeZone).apply {
+                            timeInMillis = candidate.timeInMillis
+                            set(Calendar.HOUR_OF_DAY, 0)
+                            set(Calendar.MINUTE, 0)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }.timeInMillis
+
+                        // Check if it's an exception
+                        if (!shift.exceptions.contains(midnightCandidate)) {
+                            // Calculate days since start
+                            val diffMillis = midnightCandidate - shift.startDateMillis
+                            if (diffMillis >= 0) {
+                                val daysSinceStart = diffMillis / (1000 * 60 * 60 * 24)
+                                val cycleDay = daysSinceStart % totalCycleDays
+                                if (cycleDay < shift.workDays) {
+                                    return candidate.timeInMillis
+                                }
+                            }
+                        }
+                    }
+                    candidate.add(Calendar.DAY_OF_YEAR, 1)
+                }
+                error("No se encontró un día válido de turno para la alarma ${alarm.id}")
+            }
+
+            return fallbackTrigger(candidate, now, alarm)
+        }
+
+        private fun fallbackTrigger(candidate: Calendar, now: Calendar, alarm: AlarmModel): Long {
             if (alarm.days.isEmpty()) {
                 if (!candidate.after(now)) candidate.add(Calendar.DAY_OF_YEAR, 1)
                 return candidate.timeInMillis

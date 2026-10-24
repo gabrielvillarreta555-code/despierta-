@@ -7,12 +7,20 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+data class ShiftPattern(
+    val startDateMillis: Long,
+    val workDays: Int,
+    val restDays: Int,
+    val exceptions: Set<Long> = emptySet()
+)
+
 data class AlarmModel(
     val id: Int = newAlarmId(),
     val hour: Int = 7,
     val minute: Int = 0,
     val label: String = "Alarma",
     val days: Set<Int> = emptySet(), // Calendar.SUNDAY..SATURDAY
+    val shiftPattern: ShiftPattern? = null,
     val soundUri: String = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM).toString(),
     val enabled: Boolean = true,
     val mathChallengeEnabled: Boolean = false,
@@ -51,12 +59,24 @@ class AlarmStore(context: Context) {
         List(source.length()) { index ->
             val item = source.getJSONObject(index)
             val jsonDays = item.optJSONArray("days") ?: JSONArray()
+            val shiftPatternJson = item.optJSONObject("shiftPattern")
+            val shiftPattern = if (shiftPatternJson != null) {
+                val exceptionsArray = shiftPatternJson.optJSONArray("exceptions") ?: JSONArray()
+                val exceptions = (0 until exceptionsArray.length()).map { exceptionsArray.getLong(it) }.toSet()
+                ShiftPattern(
+                    startDateMillis = shiftPatternJson.getLong("startDateMillis"),
+                    workDays = shiftPatternJson.getInt("workDays"),
+                    restDays = shiftPatternJson.getInt("restDays"),
+                    exceptions = exceptions
+                )
+            } else null
             AlarmModel(
                 id = item.getInt("id"),
                 hour = item.getInt("hour"),
                 minute = item.getInt("minute"),
                 label = item.optString("label", "Alarma"),
                 days = (0 until jsonDays.length()).map { jsonDays.getInt(it) }.toSet(),
+                shiftPattern = shiftPattern,
                 soundUri = item.optString("soundUri", defaultAlarmUri()),
                 enabled = item.optBoolean("enabled", true),
                 mathChallengeEnabled = item.optBoolean("mathChallengeEnabled", false),
@@ -80,6 +100,15 @@ class AlarmStore(context: Context) {
                 put("minute", alarm.minute)
                 put("label", alarm.label)
                 put("days", JSONArray(alarm.days.sorted()))
+                alarm.shiftPattern?.let { pattern ->
+                    val patternObj = JSONObject().apply {
+                        put("startDateMillis", pattern.startDateMillis)
+                        put("workDays", pattern.workDays)
+                        put("restDays", pattern.restDays)
+                        put("exceptions", JSONArray(pattern.exceptions.sorted()))
+                    }
+                    put("shiftPattern", patternObj)
+                } ?: put("shiftPattern", JSONObject.NULL)
                 put("soundUri", alarm.soundUri)
                 put("enabled", alarm.enabled)
                 put("mathChallengeEnabled", alarm.mathChallengeEnabled)
