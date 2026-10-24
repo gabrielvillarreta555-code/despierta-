@@ -302,13 +302,13 @@ class MainActivity : ComponentActivity() {
     ) {
         Card(
             Modifier.fillMaxWidth().clickable(onClick = onClick),
-            shape = RoundedCornerShape(18.dp)
+            shape = RoundedCornerShape(24.dp)
         ) {
-            Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 9.dp, bottom = 8.dp)) {
+            Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "%02d:%02d".format(alarm.hour, alarm.minute),
-                        fontSize = 36.sp,
+                        fontSize = 48.sp,
                         fontWeight = FontWeight.Light,
                         color = if (alarm.enabled || alarm.snoozedUntilMillis != null) {
                             MaterialTheme.colorScheme.onSurface
@@ -360,11 +360,11 @@ class MainActivity : ComponentActivity() {
             Icon(
                 Icons.Rounded.AlarmAdd,
                 contentDescription = null,
-                modifier = Modifier.size(62.dp),
+                modifier = Modifier.size(80.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.height(14.dp))
-            Text("Aún no hay alarmas", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("Aún no hay alarmas", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text("Crea una para empezar el día a tu hora", color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = onAdd) { Text("Crear alarma") }
         }
@@ -550,13 +550,13 @@ class MainActivity : ComponentActivity() {
 private fun DespiertaTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            primary = Color(0xFF9D8CFF),
-            onPrimary = Color(0xFF17122E),
-            background = Color(0xFF0B0D12),
-            surface = Color(0xFF171A21),
-            surfaceVariant = Color(0xFF222630),
-            onSurface = Color(0xFFF2F0FA),
-            onSurfaceVariant = Color(0xFFAAA8B3),
+            primary = Color(0xFF6200EE),
+            onPrimary = Color(0xFFFFFFFF),
+            background = Color(0xFF121212),
+            surface = Color(0xFF1E1E1E),
+            surfaceVariant = Color(0xFF2C2C2C),
+            onSurface = Color(0xFFE0E0E0),
+            onSurfaceVariant = Color(0xFFA0A0A0),
             tertiaryContainer = Color(0xFF3A3020)
         ),
         content = content

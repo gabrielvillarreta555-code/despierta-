@@ -96,8 +96,8 @@ class AlarmActivity : ComponentActivity() {
 
         MaterialTheme(
             colorScheme = darkColorScheme(
-                primary = Color(0xFF9D8CFF),
-                background = Color(0xFF0B0D12)
+                primary = Color(0xFF6200EE),
+                background = Color(0xFF121212)
             )
         ) {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -114,13 +114,13 @@ class AlarmActivity : ComponentActivity() {
                     Icon(
                         Icons.Rounded.AlarmOn,
                         contentDescription = null,
-                        modifier = Modifier.size(80.dp),
+                        modifier = Modifier.size(96.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Spacer(Modifier.height(20.dp))
                     Text(
                         alarm?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "--:--",
-                        fontSize = 68.sp,
+                        fontSize = 80.sp,
                         fontWeight = FontWeight.Light
                     )
                     Text(
