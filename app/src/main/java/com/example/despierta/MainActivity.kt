@@ -1,7 +1,7 @@
 package com.example.despierta
 
 import android.Manifest
-import android.app.AlarmManager
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.RingtoneManager
@@ -13,168 +13,494 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AlarmAdd
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.Calendar
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var resumeGeneration by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AlarmApp() }
+        setContent { AlarmApp(resumeGeneration) }
     }
 
-    @Composable private fun AlarmApp() {
+    override fun onResume() {
+        super.onResume()
+        val store = AlarmStore(this)
+        AlarmScheduler(this).reconcile(store.getAll())
+        resumeGeneration++
+    }
+
+    @Composable
+    private fun AlarmApp(resumeSignal: Int) {
         val store = remember { AlarmStore(this) }
         val scheduler = remember { AlarmScheduler(this) }
+        val snackbar = remember { SnackbarHostState() }
+        val scope = rememberCoroutineScope()
         var alarms by remember { mutableStateOf(store.getAll()) }
-        var editing by remember { mutableStateOf<AlarmModel?>(null) }
-        var creating by remember { mutableStateOf(false) }
-        val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+        var draft by remember { mutableStateOf<AlarmModel?>(null) }
 
+        val notificationPermission = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) {
+            resumeGeneration++
+        }
+
+        LaunchedEffect(resumeSignal) {
+            alarms = store.getAll()
+        }
         LaunchedEffect(Unit) {
-            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
                 notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
+        fun scheduleAndReport(alarm: AlarmModel) {
+            when (scheduler.schedule(alarm)) {
+                ScheduleResult.INEXACT_PERMISSION_REQUIRED -> scope.launch {
+                    snackbar.showSnackbar("Activa las alarmas exactas para garantizar la hora.")
+                }
+                ScheduleResult.FAILED -> scope.launch {
+                    snackbar.showSnackbar("No se pudo registrar la alarma. Revisa los permisos.")
+                }
+                else -> Unit
             }
         }
 
         DespiertaTheme {
             Scaffold(
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                snackbarHost = { SnackbarHost(snackbar) },
                 topBar = {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.NightsStay, null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(10.dp))
-                            Text("Despierta", fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                            Icon(
+                                Icons.Rounded.NightsStay,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(9.dp))
+                            Text("Despierta", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text(nextAlarmText(alarms), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                        Text(
+                            nextAlarmText(alarms),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
                     }
                 },
-                floatingActionButton = { FloatingActionButton(onClick = { creating = true }) { Icon(Icons.Rounded.Add, "Nueva alarma") } }
+                floatingActionButton = {
+                    FloatingActionButton(
+                        onClick = { draft = store.newAlarm() },
+                        modifier = Modifier.navigationBarsPadding()
+                    ) {
+                        Icon(Icons.Rounded.Add, "Nueva alarma")
+                    }
+                }
             ) { padding ->
-                LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    item { PermissionCard() }
-                    if (alarms.isEmpty()) item { EmptyState { creating = true } }
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(padding).navigationBarsPadding(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    item {
+                        PermissionCards(
+                            resumeSignal = resumeSignal,
+                            requestNotifications = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            }
+                        )
+                    }
+                    if (alarms.isEmpty()) item { EmptyState { draft = store.newAlarm() } }
                     items(alarms, key = { it.id }) { alarm ->
-                        AlarmCard(alarm,
-                            onClick = { editing = alarm },
+                        AlarmCard(
+                            alarm = alarm,
+                            onClick = { draft = alarm },
                             onToggle = { enabled ->
-                                val updated = alarm.copy(enabled = enabled); store.save(updated); scheduler.schedule(updated); alarms = store.getAll()
+                                val updated = alarm.copy(
+                                    enabled = enabled,
+                                    snoozedUntilMillis = if (enabled) alarm.snoozedUntilMillis else null
+                                )
+                                store.save(updated)
+                                scheduleAndReport(updated)
+                                alarms = store.getAll()
                             },
-                            onDelete = { scheduler.cancel(alarm.id); store.delete(alarm.id); alarms = store.getAll() })
+                            onDelete = {
+                                scheduler.cancel(alarm.id)
+                                store.delete(alarm.id)
+                                alarms = store.getAll()
+                            }
+                        )
                     }
                 }
             }
-            val target = editing ?: if (creating) AlarmModel() else null
-            if (target != null) AlarmEditor(target, onDismiss = { editing = null; creating = false }) { saved ->
-                store.save(saved); scheduler.schedule(saved); alarms = store.getAll(); editing = null; creating = false
+
+            draft?.let { target ->
+                AlarmEditor(
+                    initial = target,
+                    isNew = alarms.none { it.id == target.id },
+                    onDismiss = { draft = null },
+                    onSave = { saved ->
+                        store.save(saved)
+                        scheduleAndReport(saved)
+                        alarms = store.getAll()
+                        draft = null
+                    }
+                )
             }
         }
     }
 
-    @Composable private fun PermissionCard() {
-        val needsExact = Build.VERSION.SDK_INT >= 31 && !getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
-        if (!needsExact) return
+    @Composable
+    private fun PermissionCards(resumeSignal: Int, requestNotifications: () -> Unit) {
+        // Reading the signal makes this section refresh after returning from Settings.
+        @Suppress("UNUSED_VARIABLE") val refresh = resumeSignal
+        val needsExact = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !AlarmScheduler(this).canScheduleExactAlarms()
+        val needsNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        val needsFullScreen = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            !getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (needsExact) {
+                PermissionCard(
+                    title = "Permite alarmas exactas",
+                    detail = "Android debe autorizar que suenen puntualmente.",
+                    onClick = {
+                        openSettings(
+                            Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                            Uri.parse("package:$packageName")
+                        )
+                    }
+                )
+            }
+            if (needsNotifications) {
+                PermissionCard(
+                    title = "Activa las notificaciones",
+                    detail = "Necesarias para ver y controlar la alarma.",
+                    onClick = requestNotifications
+                )
+            }
+            if (needsFullScreen) {
+                PermissionCard(
+                    title = "Permite pantalla completa",
+                    detail = "Muestra la alarma sobre la pantalla bloqueada.",
+                    onClick = {
+                        openSettings(
+                            Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                            Uri.parse("package:$packageName")
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun PermissionCard(title: String, detail: String, onClick: () -> Unit) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-            Row(Modifier.fillMaxWidth().clickable {
-                startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
-            }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.WarningAmber, null); Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) { Text("Permite alarmas exactas", fontWeight = FontWeight.Bold); Text("Necesario para sonar puntualmente", fontSize = 13.sp) }
-                Icon(Icons.Rounded.ChevronRight, null)
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onClick).padding(13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Rounded.WarningAmber, contentDescription = null)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(detail, fontSize = 12.sp)
+                }
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null)
             }
         }
     }
 
-    @Composable private fun AlarmCard(alarm: AlarmModel, onClick: () -> Unit, onToggle: (Boolean) -> Unit, onDelete: () -> Unit) {
-        Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(24.dp)) {
-            Column(Modifier.padding(20.dp)) {
+    @Composable
+    private fun AlarmCard(
+        alarm: AlarmModel,
+        onClick: () -> Unit,
+        onToggle: (Boolean) -> Unit,
+        onDelete: () -> Unit
+    ) {
+        Card(
+            Modifier.fillMaxWidth().clickable(onClick = onClick),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 9.dp, bottom = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("%02d:%02d".format(alarm.hour, alarm.minute), fontSize = 43.sp, fontWeight = FontWeight.Light,
-                        color = if (alarm.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.weight(1f)); Switch(alarm.enabled, onCheckedChange = onToggle)
+                    Text(
+                        "%02d:%02d".format(alarm.hour, alarm.minute),
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Light,
+                        color = if (alarm.enabled || alarm.snoozedUntilMillis != null) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = alarm.enabled,
+                        onCheckedChange = onToggle,
+                        modifier = Modifier.padding(horizontal = 5.dp)
+                    )
                 }
-                Text(alarm.label, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(12.dp))
+                Text(alarm.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(daysLabel(alarm.days), color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    IconButton(onClick = onDelete) { Icon(Icons.Rounded.DeleteOutline, "Eliminar", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Text(
+                        if (alarm.snoozedUntilMillis != null) "Pospuesta · ${daysLabel(alarm.days)}"
+                        else daysLabel(alarm.days),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (alarm.mathChallengeEnabled) {
+                        Text("Desafío", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(42.dp)) {
+                        Icon(
+                            Icons.Rounded.DeleteOutline,
+                            contentDescription = "Eliminar",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
     }
 
-    @Composable private fun EmptyState(onAdd: () -> Unit) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 70.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Rounded.AlarmAdd, null, Modifier.size(68.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(18.dp)); Text("Aún no hay alarmas", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    @Composable
+    private fun EmptyState(onAdd: () -> Unit) {
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 56.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                Icons.Rounded.AlarmAdd,
+                contentDescription = null,
+                modifier = Modifier.size(62.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(14.dp))
+            Text("Aún no hay alarmas", fontSize = 21.sp, fontWeight = FontWeight.Bold)
             Text("Crea una para empezar el día a tu hora", color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = onAdd) { Text("Crear alarma") }
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable private fun AlarmEditor(initial: AlarmModel, onDismiss: () -> Unit, onSave: (AlarmModel) -> Unit) {
-        var hour by remember(initial.id) { mutableIntStateOf(initial.hour) }
-        var minute by remember(initial.id) { mutableIntStateOf(initial.minute) }
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+    @Composable
+    private fun AlarmEditor(
+        initial: AlarmModel,
+        isNew: Boolean,
+        onDismiss: () -> Unit,
+        onSave: (AlarmModel) -> Unit
+    ) {
         var label by remember(initial.id) { mutableStateOf(initial.label) }
         var days by remember(initial.id) { mutableStateOf(initial.days) }
         var soundUri by remember(initial.id) { mutableStateOf(initial.soundUri) }
+        var mathChallenge by remember(initial.id) { mutableStateOf(initial.mathChallengeEnabled) }
         val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let { soundUri = it.toString() }
+            result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let { uri ->
+                soundUri = uri.toString()
+            }
         }
-        val timePickerState = rememberTimePickerState(hour, minute, true)
-        AlertDialog(onDismissRequest = onDismiss,
-            title = { Text(if (initial.label == "Alarma" && initial.days.isEmpty()) "Nueva alarma" else "Editar alarma") },
+        val timePickerState = rememberTimePickerState(initial.hour, initial.minute, true)
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(if (isNew) "Nueva alarma" else "Editar alarma") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    TimeInput(timePickerState)
-                    OutlinedTextField(label, { label = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Column(
+                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(13.dp)
+                ) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        TimeInput(timePickerState)
+                    }
+                    OutlinedTextField(
+                        value = label,
+                        onValueChange = { label = it },
+                        label = { Text("Nombre") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Text("Repetir", fontWeight = FontWeight.SemiBold)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("D","L","M","X","J","V","S").forEachIndexed { i, text ->
-                            val day = i + 1; FilterChip(selected = day in days, onClick = { days = if (day in days) days - day else days + day }, label = { Text(text) })
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        listOf("D", "L", "M", "X", "J", "V", "S").forEachIndexed { index, text ->
+                            val day = index + 1
+                            FilterChip(
+                                selected = day in days,
+                                onClick = { days = if (day in days) days - day else days + day },
+                                label = { Text(text) }
+                            )
                         }
                     }
-                    OutlinedButton(onClick = {
-                        picker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(soundUri))
-                        })
-                    }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.MusicNote, null); Spacer(Modifier.width(8.dp)); Text("Elegir sonido") }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Desafío matemático", fontWeight = FontWeight.SemiBold)
+                            Text("Obligatorio para detener", fontSize = 12.sp)
+                        }
+                        Switch(checked = mathChallenge, onCheckedChange = { mathChallenge = it })
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            picker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(soundUri))
+                            })
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.MusicNote, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Elegir sonido")
+                    }
                 }
             },
-            confirmButton = { Button(onClick = { hour = timePickerState.hour; minute = timePickerState.minute; onSave(initial.copy(hour=hour, minute=minute, label=label.ifBlank { "Alarma" }, days=days, soundUri=soundUri, enabled=true)) }) { Text("Guardar") } },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } })
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onSave(
+                            initial.copy(
+                                hour = timePickerState.hour,
+                                minute = timePickerState.minute,
+                                label = label.ifBlank { "Alarma" },
+                                days = days,
+                                soundUri = soundUri.ifBlank { AlarmStore.defaultAlarmUri() },
+                                enabled = true,
+                                mathChallengeEnabled = mathChallenge,
+                                snoozedUntilMillis = null
+                            )
+                        )
+                    }
+                ) { Text("Guardar") }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+        )
+    }
+
+    private fun openSettings(action: String, data: Uri) {
+        runCatching { startActivity(Intent(action, data)) }
+            .onFailure { AlarmLog.error("settings_open_failed", "action=$action", it) }
     }
 
     private fun daysLabel(days: Set<Int>) = when {
         days.isEmpty() -> "Una vez"
         days.size == 7 -> "Todos los días"
-        days == setOf(2,3,4,5,6) -> "Entre semana"
-        else -> listOf("Dom","Lun","Mar","Mié","Jue","Vie","Sáb").filterIndexed { i, _ -> i + 1 in days }.joinToString(" · ")
+        days == setOf(2, 3, 4, 5, 6) -> "Entre semana"
+        else -> listOf("Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb")
+            .filterIndexed { index, _ -> index + 1 in days }
+            .joinToString(" · ")
     }
 
-    private fun nextAlarmText(alarms: List<AlarmModel>): String = if (alarms.none { it.enabled }) "Sin alarmas activas" else "Tu próximo despertar está programado"
+    private fun nextAlarmText(alarms: List<AlarmModel>): String =
+        if (alarms.none { it.enabled || it.snoozedUntilMillis != null }) {
+            "Sin alarmas activas"
+        } else {
+            "Tu próximo despertar está programado"
+        }
 }
 
-@Composable private fun DespiertaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(
-        primary = Color(0xFF9D8CFF), onPrimary = Color(0xFF17122E),
-        background = Color(0xFF0B0D12), surface = Color(0xFF171A21), surfaceVariant = Color(0xFF222630),
-        onSurface = Color(0xFFF2F0FA), onSurfaceVariant = Color(0xFFAAA8B3), tertiaryContainer = Color(0xFF3A3020)
-    ), content = content)
+@Composable
+private fun DespiertaTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Color(0xFF9D8CFF),
+            onPrimary = Color(0xFF17122E),
+            background = Color(0xFF0B0D12),
+            surface = Color(0xFF171A21),
+            surfaceVariant = Color(0xFF222630),
+            onSurface = Color(0xFFF2F0FA),
+            onSurfaceVariant = Color(0xFFAAA8B3),
+            tertiaryContainer = Color(0xFF3A3020)
+        ),
+        content = content
+    )
 }

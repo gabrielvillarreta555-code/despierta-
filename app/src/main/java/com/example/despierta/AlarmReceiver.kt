@@ -3,19 +3,65 @@ package com.example.despierta
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.ContextCompat
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getIntExtra(AlarmScheduler.EXTRA_ID, -1)
-        val alarm = AlarmStore(context).find(id) ?: return
-        context.startForegroundService(Intent(context, AlarmService::class.java).putExtra(AlarmScheduler.EXTRA_ID, id))
-        if (alarm.days.isEmpty()) AlarmStore(context).save(alarm.copy(enabled = false))
-        else AlarmScheduler(context).schedule(alarm)
-    }
-}
+        val store = AlarmStore(context)
+        val alarm = store.find(id)
+        if (id <= 0 || alarm == null) {
+            AlarmLog.warning("receiver_ignored", "id=$id reason=missing_alarm")
+            return
+        }
 
-class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        AlarmStore(context).getAll().filter { it.enabled }.forEach { AlarmScheduler(context).schedule(it) }
+        val now = System.currentTimeMillis()
+        val snoozedUntil = alarm.snoozedUntilMillis
+        val isSnooze = snoozedUntil != null
+
+        // Ignore a stale broadcast from a schedule that was replaced by a later snooze.
+        if (snoozedUntil != null && snoozedUntil > now + EARLY_TOLERANCE_MILLIS) {
+            AlarmLog.warning(
+                "receiver_early",
+                "id=$id expectedAt=$snoozedUntil receivedAt=$now"
+            )
+            AlarmScheduler(context).schedule(alarm)
+            return
+        }
+        if (!alarm.enabled && !isSnooze) {
+            AlarmLog.warning("receiver_ignored", "id=$id reason=disabled")
+            AlarmScheduler(context).cancel(id)
+            return
+        }
+
+        AlarmLog.info("receiver_fired", "id=$id snooze=$isSnooze receivedAt=$now")
+        val updated = when {
+            isSnooze -> alarm.copy(snoozedUntilMillis = null)
+            alarm.days.isEmpty() -> alarm.copy(enabled = false, snoozedUntilMillis = null)
+            else -> alarm.copy(snoozedUntilMillis = null)
+        }
+        store.save(updated)
+
+        try {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, AlarmService::class.java)
+                    .setAction(AlarmService.ACTION_RING)
+                    .putExtra(AlarmScheduler.EXTRA_ID, id)
+            )
+            AlarmLog.info("service_start_requested", "id=$id")
+        } catch (error: RuntimeException) {
+            AlarmLog.error("service_start_failed", "id=$id", error)
+        }
+
+        // setAlarmClock() is one-shot. Re-register repeating alarms immediately;
+        // a one-time alarm stays disabled but can still be explicitly snoozed.
+        if (updated.enabled && updated.days.isNotEmpty()) {
+            AlarmScheduler(context).schedule(updated)
+        }
+    }
+
+    companion object {
+        private const val EARLY_TOLERANCE_MILLIS = 30_000L
     }
 }
