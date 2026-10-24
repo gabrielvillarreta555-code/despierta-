@@ -1,7 +1,9 @@
 package com.example.despierta
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.GregorianCalendar
 import java.util.TimeZone
@@ -59,9 +61,7 @@ class AlarmSchedulerTest {
 
     @Test
     fun shiftAlarmDuringWorkDays() {
-        val startDate = instant(2026, Calendar.OCTOBER, 1, 0, 0)
-        // 12x4 cycle
-        val pattern = ShiftPattern(startDate, 12, 4)
+        val pattern = ShiftPattern.from(LocalDate.of(2026, 10, 1), 12, 4)
 
         // Day 5 of the cycle (work day)
         val now = instant(2026, Calendar.OCTOBER, 5, 6, 0)
@@ -73,9 +73,8 @@ class AlarmSchedulerTest {
 
     @Test
     fun shiftAlarmDuringRestDaysMovesToNextWorkCycle() {
-        val startDate = instant(2026, Calendar.OCTOBER, 1, 0, 0)
         // 12x4 cycle: Oct 1 - Oct 12 (work), Oct 13 - Oct 16 (rest)
-        val pattern = ShiftPattern(startDate, 12, 4)
+        val pattern = ShiftPattern.from(LocalDate.of(2026, 10, 1), 12, 4)
 
         // Day 14 of the cycle (rest day)
         val now = instant(2026, Calendar.OCTOBER, 14, 6, 0)
@@ -87,11 +86,41 @@ class AlarmSchedulerTest {
     }
 
     @Test
+    fun sevenBySevenCycleMovesFromRestToNextWorkBlock() {
+        val pattern = ShiftPattern.from(LocalDate.of(2026, 10, 1), 7, 7)
+        val now = instant(2026, Calendar.OCTOBER, 8, 6, 0)
+
+        val result = AlarmScheduler.nextTriggerMillis(
+            alarm(hour = 7, minute = 0, pattern = pattern),
+            now,
+            utc
+        )
+
+        assertEquals(instant(2026, Calendar.OCTOBER, 15, 7, 0), result)
+    }
+
+    @Test
+    fun customTwoByThreeCycleRepeatsAcrossCompleteCycle() {
+        val pattern = ShiftPattern.from(LocalDate.of(2026, 10, 1), 2, 3)
+        val now = instant(2026, Calendar.OCTOBER, 4, 6, 0)
+
+        val result = AlarmScheduler.nextTriggerMillis(
+            alarm(hour = 7, minute = 0, pattern = pattern),
+            now,
+            utc
+        )
+
+        assertEquals(instant(2026, Calendar.OCTOBER, 6, 7, 0), result)
+    }
+
+    @Test
     fun shiftAlarmRespectsExceptions() {
-        val startDate = instant(2026, Calendar.OCTOBER, 1, 0, 0)
-        // Exception on Oct 5
-        val exceptionDate = instant(2026, Calendar.OCTOBER, 5, 0, 0)
-        val pattern = ShiftPattern(startDate, 12, 4, setOf(exceptionDate))
+        val pattern = ShiftPattern.from(
+            LocalDate.of(2026, 10, 1),
+            12,
+            4,
+            setOf(LocalDate.of(2026, 10, 5))
+        )
 
         val now = instant(2026, Calendar.OCTOBER, 4, 8, 0) // Passed time for today
         val alarmModel = alarm(hour = 7, minute = 0, pattern = pattern)
@@ -100,6 +129,50 @@ class AlarmSchedulerTest {
 
         // Should skip Oct 5 (exception) and trigger on Oct 6
         assertEquals(instant(2026, Calendar.OCTOBER, 6, 7, 0), result)
+    }
+
+    @Test
+    fun shiftCycleUsesCivilDaysAcrossDstChange() {
+        val newYork = TimeZone.getTimeZone("America/New_York")
+        val pattern = ShiftPattern.from(LocalDate.of(2026, 3, 1), 12, 4)
+        // March 13 is the first rest day even though the DST transition made the
+        // elapsed duration since March 1 one hour shorter than twelve 24-hour days.
+        val now = instant(2026, Calendar.MARCH, 13, 6, 0, newYork)
+
+        val result = AlarmScheduler.nextTriggerMillis(
+            alarm(hour = 7, minute = 0, pattern = pattern),
+            now,
+            newYork
+        )
+
+        assertEquals(instant(2026, Calendar.MARCH, 17, 7, 0, newYork), result)
+    }
+
+    @Test
+    fun shiftAlarmBeforeCycleStartWaitsForStartDate() {
+        val pattern = ShiftPattern.from(LocalDate.of(2026, 10, 1), 12, 4)
+        val now = instant(2026, Calendar.SEPTEMBER, 29, 8, 0)
+
+        val result = AlarmScheduler.nextTriggerMillis(
+            alarm(hour = 7, minute = 0, pattern = pattern),
+            now,
+            utc
+        )
+
+        assertEquals(instant(2026, Calendar.OCTOBER, 1, 7, 0), result)
+    }
+
+    @Test
+    fun invalidZeroLengthCycleIsRejectedWithoutArithmeticException() {
+        val invalid = ShiftPattern(LocalDate.of(2026, 10, 1).toEpochDay(), 0, 0)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            AlarmScheduler.nextTriggerMillis(
+                alarm(hour = 7, minute = 0, pattern = invalid),
+                instant(2026, Calendar.OCTOBER, 1, 6, 0),
+                utc
+            )
+        }
     }
 
     private fun alarm(hour: Int, minute: Int, days: Set<Int> = emptySet(), pattern: ShiftPattern? = null) = AlarmModel(
@@ -115,8 +188,15 @@ class AlarmSchedulerTest {
         snoozedUntilMillis = null
     )
 
-    private fun instant(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
-        GregorianCalendar(utc).apply {
+    private fun instant(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int,
+        minute: Int,
+        zone: TimeZone = utc
+    ): Long =
+        GregorianCalendar(zone).apply {
             clear()
             set(year, month, day, hour, minute, 0)
         }.timeInMillis

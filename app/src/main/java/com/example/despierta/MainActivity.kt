@@ -81,6 +81,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     private var resumeGeneration by mutableIntStateOf(0)
@@ -385,7 +386,27 @@ class MainActivity : ComponentActivity() {
         var useShift by remember(initial.id) { mutableStateOf(initial.shiftPattern != null) }
         var workDays by remember(initial.id) { mutableStateOf(initial.shiftPattern?.workDays?.toString() ?: "12") }
         var restDays by remember(initial.id) { mutableStateOf(initial.shiftPattern?.restDays?.toString() ?: "4") }
-        var startDateMillis by remember(initial.id) { mutableStateOf(initial.shiftPattern?.startDateMillis ?: System.currentTimeMillis()) }
+        var startEpochDay by remember(initial.id) {
+            mutableStateOf(initial.shiftPattern?.startEpochDay ?: LocalDate.now().toEpochDay())
+        }
+
+        val shiftPatternCandidate = if (useShift) {
+            val work = workDays.toIntOrNull()
+            val rest = restDays.toIntOrNull()
+            if (work != null && rest != null) {
+                ShiftPattern(
+                    startEpochDay = startEpochDay,
+                    workDays = work,
+                    restDays = rest,
+                    exceptionEpochDays = initial.shiftPattern?.exceptionEpochDays ?: emptySet()
+                )
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+        val shiftInputValid = !useShift || shiftPatternCandidate?.isValid == true
 
         val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let { uri ->
@@ -427,6 +448,7 @@ class MainActivity : ComponentActivity() {
                                 onValueChange = { workDays = it.filter { char -> char.isDigit() } },
                                 label = { Text("Días trabajo") },
                                 singleLine = true,
+                                isError = useShift && (workDays.toIntOrNull() ?: 0) < 1,
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedTextField(
@@ -434,7 +456,16 @@ class MainActivity : ComponentActivity() {
                                 onValueChange = { restDays = it.filter { char -> char.isDigit() } },
                                 label = { Text("Días descanso") },
                                 singleLine = true,
+                                isError = useShift && (restDays.toIntOrNull() ?: 0) < 1,
                                 modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        if (!shiftInputValid) {
+                            Text(
+                                "Indica al menos un día de trabajo y uno de descanso (máximo 366 por ciclo).",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
                             )
                         }
 
@@ -443,7 +474,7 @@ class MainActivity : ComponentActivity() {
                                 // Since we can't implement a full DatePicker without significantly expanding the imports
                                 // and adding complex Material3 components, we reset the cycle start date to "today".
                                 // This provides a functional, albeit simple, way to sync the start of the shift cycle.
-                                startDateMillis = System.currentTimeMillis()
+                                startEpochDay = LocalDate.now().toEpochDay()
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -497,12 +528,8 @@ class MainActivity : ComponentActivity() {
             confirmButton = {
                 Button(
                     onClick = {
-                            val pattern = if (useShift) {
-                                val w = workDays.toIntOrNull() ?: 12
-                                val r = restDays.toIntOrNull() ?: 4
-                                val startMillis = startDateMillis
-                                ShiftPattern(startMillis, w, r, initial.shiftPattern?.exceptions ?: emptySet())
-                            } else null
+                        val pattern = shiftPatternCandidate
+                        if (useShift && pattern == null) return@Button
 
                         onSave(
                             initial.copy(
@@ -517,7 +544,8 @@ class MainActivity : ComponentActivity() {
                                 snoozedUntilMillis = null
                             )
                         )
-                    }
+                    },
+                    enabled = shiftInputValid
                 ) { Text("Guardar") }
             },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
