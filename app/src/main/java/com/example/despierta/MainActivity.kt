@@ -13,6 +13,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +62,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,6 +79,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -147,23 +152,53 @@ class MainActivity : ComponentActivity() {
                         Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Rounded.NightsStay,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(DespiertaMint, DespiertaSky)
+                                    )
+                                )
+                                .padding(horizontal = 20.dp, vertical = 18.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Rounded.NightsStay,
+                                    contentDescription = null,
+                                    tint = DespiertaInk
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    "Despierta",
+                                    color = DespiertaInk,
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Surface(
+                                    color = Color.White.copy(alpha = 0.28f),
+                                    shape = RoundedCornerShape(50)
+                                ) {
+                                    Text(
+                                        "VERSIÓN 2.0",
+                                        color = DespiertaInk,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                nextAlarmText(alarms),
+                                color = DespiertaInk.copy(alpha = 0.78f),
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(top = 5.dp)
                             )
-                            Spacer(Modifier.width(9.dp))
-                            Text("Despierta", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text(
-                            nextAlarmText(alarms),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 3.dp)
-                        )
                     }
                 },
                 floatingActionButton = {
@@ -303,13 +338,29 @@ class MainActivity : ComponentActivity() {
     ) {
         Card(
             Modifier.fillMaxWidth().clickable(onClick = onClick),
-            shape = RoundedCornerShape(18.dp)
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (alarm.enabled || alarm.snoozedUntilMillis != null) {
+                    DespiertaActiveCard
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+            ),
+            border = BorderStroke(
+                1.dp,
+                if (alarm.enabled || alarm.snoozedUntilMillis != null) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.38f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
         ) {
-            Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 9.dp, bottom = 8.dp)) {
+            Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "%02d:%02d".format(alarm.hour, alarm.minute),
-                        fontSize = 36.sp,
+                        fontSize = 46.sp,
                         fontWeight = FontWeight.Light,
                         color = if (alarm.enabled || alarm.snoozedUntilMillis != null) {
                             MaterialTheme.colorScheme.onSurface
@@ -324,7 +375,34 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(horizontal = 5.dp)
                     )
                 }
-                Text(alarm.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        alarm.label,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Surface(
+                        color = if (alarm.enabled) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            if (alarm.enabled) "ACTIVA" else "PAUSADA",
+                            color = if (alarm.enabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val labelText = if (alarm.snoozedUntilMillis != null) {
                         "Pospuesta · " + (if (alarm.shiftPattern != null) "Turno ${alarm.shiftPattern.workDays}x${alarm.shiftPattern.restDays}" else daysLabel(alarm.days))
@@ -361,11 +439,11 @@ class MainActivity : ComponentActivity() {
             Icon(
                 Icons.Rounded.AlarmAdd,
                 contentDescription = null,
-                modifier = Modifier.size(62.dp),
+                modifier = Modifier.size(80.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.height(14.dp))
-            Text("Aún no hay alarmas", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("Aún no hay alarmas", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text("Crea una para empezar el día a tu hora", color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = onAdd) { Text("Crear alarma") }
         }
@@ -578,15 +656,21 @@ class MainActivity : ComponentActivity() {
 private fun DespiertaTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            primary = Color(0xFF9D8CFF),
-            onPrimary = Color(0xFF17122E),
-            background = Color(0xFF0B0D12),
-            surface = Color(0xFF171A21),
-            surfaceVariant = Color(0xFF222630),
-            onSurface = Color(0xFFF2F0FA),
-            onSurfaceVariant = Color(0xFFAAA8B3),
-            tertiaryContainer = Color(0xFF3A3020)
+            primary = DespiertaMint,
+            onPrimary = DespiertaInk,
+            secondary = DespiertaSky,
+            background = Color(0xFF061315),
+            surface = Color(0xFF102326),
+            surfaceVariant = Color(0xFF1A3639),
+            onSurface = Color(0xFFF1FFFD),
+            onSurfaceVariant = Color(0xFFA7C7C3),
+            tertiaryContainer = Color(0xFF3A2B19)
         ),
         content = content
     )
 }
+
+private val DespiertaMint = Color(0xFF65E6D8)
+private val DespiertaSky = Color(0xFF72B8FF)
+private val DespiertaInk = Color(0xFF062326)
+private val DespiertaActiveCard = Color(0xFF102D30)
