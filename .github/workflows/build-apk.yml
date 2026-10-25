@@ -35,32 +35,32 @@ jobs:
       - name: Compilar APK instalable
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Preparar y verificar Despierta 2.1
+      - name: Preparar y verificar Despierta 2.2
         shell: bash
         run: |
           set -euo pipefail
-          release_dir="app/build/outputs/despierta-2.1"
+          release_dir="app/build/outputs/despierta-2.2"
           mkdir -p "$release_dir"
-          cp app/build/outputs/apk/debug/app-debug.apk "$release_dir/Despierta-2.1.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$release_dir/Despierta-2.2.apk"
           commit_sha="$(git rev-parse HEAD)"
           aapt_path="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          "$aapt_path" dump badging "$release_dir/Despierta-2.1.apk" | tee "$release_dir/manifest-badging.txt"
-          grep -q "versionCode='4' versionName='2.1'" "$release_dir/manifest-badging.txt"
-          unzip -p "$release_dir/Despierta-2.1.apk" 'classes*.dex' > "$RUNNER_TEMP/despierta-classes.dex"
+          "$aapt_path" dump badging "$release_dir/Despierta-2.2.apk" | tee "$release_dir/manifest-badging.txt"
+          grep -q "versionCode='5' versionName='2.2'" "$release_dir/manifest-badging.txt"
+          unzip -p "$release_dir/Despierta-2.2.apk" 'classes*.dex' > "$RUNNER_TEMP/despierta-classes.dex"
           strings "$RUNNER_TEMP/despierta-classes.dex" > "$RUNNER_TEMP/despierta-classes.txt"
           grep -Fq "${commit_sha:0:12}" "$RUNNER_TEMP/despierta-classes.txt"
           {
             echo "commit=$commit_sha"
-            echo "versionName=2.1"
-            echo "versionCode=4"
-            sha256sum "$release_dir/Despierta-2.1.apk"
+            echo "versionName=2.2"
+            echo "versionCode=5"
+            sha256sum "$release_dir/Despierta-2.2.apk"
           } > "$release_dir/BUILD-INFO.txt"
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-2.1
-          path: app/build/outputs/despierta-2.1/
+          name: Despierta-2.2
+          path: app/build/outputs/despierta-2.2/
           if-no-files-found: error
           retention-days: 14
 
@@ -105,25 +105,25 @@ jobs:
             adb shell am force-stop com.example.despierta
             adb shell am start -W -n com.example.despierta/.MainActivity
             sleep 3
-            adb exec-out screencap -p > app/build/outputs/androidTest-results/diagnostics/Despierta-2.1-Inicio.png
-            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.1-Inicio.png
+            adb exec-out screencap -p > app/build/outputs/androidTest-results/diagnostics/Despierta-2.2-Inicio.png
+            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.2-Inicio.png
 
       - name: Publicar informes instrumentados
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-Pruebas-Android16
+          name: Despierta-2.2-Pruebas-Android16
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Publicar captura real Despierta 2.1
+      - name: Publicar captura real Despierta 2.2
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-2.1-Capturas
-          path: app/build/outputs/androidTest-results/diagnostics/Despierta-2.1-Inicio.png
+          name: Despierta-2.2-Capturas
+          path: app/build/outputs/androidTest-results/diagnostics/Despierta-2.2-Inicio.png
           if-no-files-found: warn
           retention-days: 14

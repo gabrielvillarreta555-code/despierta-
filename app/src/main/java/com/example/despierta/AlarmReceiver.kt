@@ -8,10 +8,23 @@ import androidx.core.content.ContextCompat
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getIntExtra(AlarmScheduler.EXTRA_ID, -1)
+        val expectedTriggerAt = intent.getLongExtra(
+            AlarmScheduler.EXTRA_EXPECTED_TRIGGER_AT,
+            0L
+        )
         val store = AlarmStore(context)
         val alarm = store.find(id)
         if (id <= 0 || alarm == null) {
             AlarmLog.warning("receiver_ignored", "id=$id reason=missing_alarm")
+            if (id > 0) AlarmScheduleRegistry(context).clear(id)
+            return
+        }
+
+        if (!AlarmScheduleRegistry(context).claim(id, expectedTriggerAt)) {
+            AlarmLog.warning(
+                "receiver_ignored",
+                "id=$id reason=stale_delivery expectedAt=$expectedTriggerAt"
+            )
             return
         }
 
@@ -38,15 +51,19 @@ class AlarmReceiver : BroadcastReceiver() {
         val updated = stateAfterFiring(alarm, isSnooze)
         store.save(updated)
 
+        runCatching { AlarmWakeLock.acquireForServiceLaunch(context) }
+            .onFailure { AlarmLog.warning("launch_wakelock_failed", "id=$id", it) }
         try {
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, AlarmService::class.java)
                     .setAction(AlarmService.ACTION_RING)
                     .putExtra(AlarmScheduler.EXTRA_ID, id)
+                    .putExtra(AlarmScheduler.EXTRA_EXPECTED_TRIGGER_AT, expectedTriggerAt)
             )
             AlarmLog.info("service_start_requested", "id=$id")
         } catch (error: RuntimeException) {
+            AlarmWakeLock.releaseAfterServiceLaunch()
             AlarmLog.error("service_start_failed", "id=$id", error)
         }
 

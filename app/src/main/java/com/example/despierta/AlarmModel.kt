@@ -126,16 +126,22 @@ class AlarmStore(context: Context) {
                 .getOrNull() ?: return null
         }
 
-        return buildList {
-            repeat(source.length()) { index ->
-                runCatching { parseAlarm(source.getJSONObject(index)) }
-                    .onSuccess(::add)
-                    .onFailure {
-                        // A damaged entry must not hide the rest of the user's alarms.
-                        Log.e(AlarmLog.TAG, "store_item_skipped index=$index", it)
+        val alarmsById = linkedMapOf<Int, AlarmModel>()
+        repeat(source.length()) { index ->
+            runCatching { parseAlarm(source.getJSONObject(index)) }
+                .onSuccess { alarm ->
+                    if (alarmsById.put(alarm.id, alarm) != null) {
+                        // A duplicated identifier would map to one PendingIntent. Keep the latest
+                        // stored entry so the UI and AlarmManager agree on a single alarm.
+                        Log.w(AlarmLog.TAG, "store_duplicate_replaced id=${alarm.id} index=$index")
                     }
-            }
+                }
+                .onFailure {
+                    // A damaged entry must not hide the rest of the user's alarms.
+                    Log.e(AlarmLog.TAG, "store_item_skipped index=$index", it)
+                }
         }
+        return alarmsById.values.toList()
     }
 
     private fun parseAlarm(item: JSONObject): AlarmModel {

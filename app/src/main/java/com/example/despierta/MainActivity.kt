@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AlarmService.ensureNotificationChannel(this)
         setContent { AlarmApp(resumeGeneration) }
     }
 
@@ -102,7 +103,8 @@ class MainActivity : ComponentActivity() {
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED,
             needsFullScreen = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-                !getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+                !getSystemService(NotificationManager::class.java).canUseFullScreenIntent(),
+            needsAlarmChannel = AlarmService.isNotificationChannelBlocked(this)
         )
 
         DespiertaTheme {
@@ -154,7 +156,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onRequestExactAlarm = {
                     openSettings(
-                        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                        ACTION_REQUEST_EXACT_ALARM,
                         Uri.parse("package:$packageName")
                     )
                 },
@@ -165,9 +167,20 @@ class MainActivity : ComponentActivity() {
                 },
                 onRequestFullScreen = {
                     openSettings(
-                        Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                        ACTION_MANAGE_FULL_SCREEN_INTENT,
                         Uri.parse("package:$packageName")
                     )
+                },
+                onRequestAlarmChannel = {
+                    runCatching {
+                        startActivity(
+                            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                .putExtra(Settings.EXTRA_CHANNEL_ID, AlarmService.CHANNEL_ID)
+                        )
+                    }.onFailure {
+                        AlarmLog.error("channel_settings_open_failed", "channel=${AlarmService.CHANNEL_ID}", it)
+                    }
                 }
             )
 
@@ -175,6 +188,7 @@ class MainActivity : ComponentActivity() {
                 AlarmEditor(
                     initial = target,
                     isNew = alarms.none { it.id == target.id },
+                    hapticsEnabled = hapticsEnabled,
                     onDismiss = { draft = null },
                     onSave = { saved ->
                         store.save(saved)
@@ -190,5 +204,13 @@ class MainActivity : ComponentActivity() {
     private fun openSettings(action: String, data: Uri) {
         runCatching { startActivity(Intent(action, data)) }
             .onFailure { AlarmLog.error("settings_open_failed", "action=$action", it) }
+    }
+
+    companion object {
+        // Inlined strings keep the guarded settings actions safe on the minSdk 26 code path.
+        private const val ACTION_REQUEST_EXACT_ALARM =
+            "android.settings.REQUEST_SCHEDULE_EXACT_ALARM"
+        private const val ACTION_MANAGE_FULL_SCREEN_INTENT =
+            "android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT"
     }
 }

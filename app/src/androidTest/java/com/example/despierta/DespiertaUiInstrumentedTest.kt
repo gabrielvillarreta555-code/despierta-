@@ -22,7 +22,7 @@ class DespiertaUiInstrumentedTest {
     @Test
     fun versionAndPrimaryNavigationAreVisible() {
         composeRule.onNodeWithText("DESPIERTA").assertIsDisplayed()
-        composeRule.onNodeWithText("2.1").assertIsDisplayed()
+        composeRule.onNodeWithText("2.2").assertIsDisplayed()
         composeRule.onNodeWithTag("live_clock").assertIsDisplayed()
 
         composeRule.onNodeWithTag("nav_shifts").performClick()
@@ -30,6 +30,16 @@ class DespiertaUiInstrumentedTest {
 
         composeRule.onNodeWithTag("nav_settings").performClick()
         composeRule.onNodeWithTag("settings_screen").assertIsDisplayed()
-        composeRule.onNodeWithText("Despierta 2.1").assertIsDisplayed()
+        composeRule.onNodeWithText("Despierta 2.2").assertIsDisplayed()
+    }
+
+    @Test
+    fun alarmEditorShowsWheelPickerAndManualEntry() {
+        composeRule.onNodeWithTag("add_alarm").performClick()
+
+        composeRule.onNodeWithTag("time_wheel_hour").assertIsDisplayed()
+        composeRule.onNodeWithTag("time_wheel_minute").assertIsDisplayed()
+        composeRule.onNodeWithText("Introducir hora manualmente").performClick()
+        composeRule.onNodeWithTag("manual_time_input").assertIsDisplayed()
     }
 }
