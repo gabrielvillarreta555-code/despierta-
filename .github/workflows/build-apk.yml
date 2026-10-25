@@ -3,8 +3,12 @@ name: Generar APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, feature/despierta-2.1-codex ]
+    branches: [ main ]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -42,7 +46,7 @@ jobs:
           aapt_path="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$aapt_path" dump badging "$release_dir/Despierta-2.1.apk" | tee "$release_dir/manifest-badging.txt"
           grep -q "versionCode='4' versionName='2.1'" "$release_dir/manifest-badging.txt"
-          unzip -p "$release_dir/Despierta-2.1.apk" classes.dex > "$RUNNER_TEMP/despierta-classes.dex"
+          unzip -p "$release_dir/Despierta-2.1.apk" 'classes*.dex' > "$RUNNER_TEMP/despierta-classes.dex"
           strings "$RUNNER_TEMP/despierta-classes.dex" > "$RUNNER_TEMP/despierta-classes.txt"
           grep -Fq "${commit_sha:0:12}" "$RUNNER_TEMP/despierta-classes.txt"
           {
