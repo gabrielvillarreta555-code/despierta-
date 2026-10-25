@@ -96,15 +96,19 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        val notificationManager = getSystemService(NotificationManager::class.java)
         val permissionState = PermissionUiState(
             needsExactAlarm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 !scheduler.canScheduleExactAlarms(),
-            needsNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-                PackageManager.PERMISSION_GRANTED,
+            needsNotifications = !notificationManager.areNotificationsEnabled() ||
+                (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED
+                    ),
             needsFullScreen = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-                !getSystemService(NotificationManager::class.java).canUseFullScreenIntent(),
-            needsAlarmChannel = AlarmService.isNotificationChannelBlocked(this)
+                !notificationManager.canUseFullScreenIntent(),
+            needsAlarmChannel = AlarmService.isNotificationChannelDegraded(this)
         )
 
         DespiertaTheme {
@@ -161,8 +165,21 @@ class MainActivity : ComponentActivity() {
                     )
                 },
                 onRequestNotifications = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED
+                    ) {
                         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        runCatching {
+                            startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                            )
+                        }.onFailure {
+                            AlarmLog.error("notification_settings_open_failed", "", it)
+                        }
                     }
                 },
                 onRequestFullScreen = {

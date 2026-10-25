@@ -54,9 +54,11 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.WorkHistory
@@ -83,6 +85,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -806,28 +809,28 @@ private fun SettingsScreen(
                     if (permissionState.needsExactAlarm) {
                         PermissionRow(
                             title = "Alarmas exactas",
-                            detail = "Necesario para sonar puntualmente",
+                            detail = "Permite registrar la hora exacta incluso durante Doze",
                             onClick = onRequestExactAlarm
                         )
                     }
                     if (permissionState.needsNotifications) {
                         PermissionRow(
                             title = "Notificaciones",
-                            detail = "Muestra los controles de detener y posponer",
+                            detail = "Actívalas para ver Detener y Posponer mientras suena",
                             onClick = onRequestNotifications
                         )
                     }
                     if (permissionState.needsFullScreen) {
                         PermissionRow(
                             title = "Pantalla completa",
-                            detail = "Abre la alarma sobre la pantalla bloqueada",
+                            detail = "Autoriza mostrar la alarma sobre la pantalla bloqueada",
                             onClick = onRequestFullScreen
                         )
                     }
                     if (permissionState.needsAlarmChannel) {
                         PermissionRow(
-                            title = "Canal de alarmas bloqueado",
-                            detail = "Actívalo para ver los controles en pantalla",
+                            title = "Canal sin prioridad alta",
+                            detail = "Restaura la prioridad de Alarmas activas en Android",
                             onClick = onRequestAlarmChannel
                         )
                     }
@@ -835,7 +838,7 @@ private fun SettingsScreen(
                 SettingsStatusRow(
                     icon = Icons.Rounded.Shield,
                     title = "Recuperación automática",
-                    detail = "Las alarmas se reprograman al reiniciar o actualizar el teléfono."
+                    detail = "Se reprograman tras reiniciar, actualizar o cambiar la hora. Algunos fabricantes requieren permitir actividad en segundo plano."
                 )
             }
         }
@@ -860,8 +863,8 @@ private fun SettingsScreen(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 SettingsStatusRow(
                     icon = Icons.Rounded.NotificationsActive,
-                    title = "Alarma con vibración",
-                    detail = "La vibración de emergencia permanece activa mientras suena."
+                    title = "Sonido bajo tu control",
+                    detail = "Despierta no cambia el volumen ni ignora No molestar; revisa esos ajustes antes de dormir."
                 )
             }
         }
@@ -961,6 +964,10 @@ internal fun AlarmEditor(
     var label by remember(initial.id) { mutableStateOf(initial.label) }
     var days by remember(initial.id) { mutableStateOf(initial.days) }
     var soundUri by remember(initial.id) { mutableStateOf(initial.soundUri) }
+    var vibrate by remember(initial.id) { mutableStateOf(initial.vibrate) }
+    var snoozeMinutes by remember(initial.id) {
+        mutableIntStateOf(AlarmStore.normalizeSnoozeMinutes(initial.snoozeMinutes))
+    }
     var mathChallenge by remember(initial.id) { mutableStateOf(initial.mathChallengeEnabled) }
     var useShift by remember(initial.id) { mutableStateOf(initial.shiftPattern != null) }
     var workDays by remember(initial.id) { mutableStateOf(validInitialShift?.workDays?.toString() ?: "12") }
@@ -968,7 +975,8 @@ internal fun AlarmEditor(
     var startEpochDay by remember(initial.id) {
         mutableLongStateOf(validInitialShift?.startEpochDay ?: LocalDate.now().toEpochDay())
     }
-    val uses24HourClock = DateFormat.is24HourFormat(LocalContext.current)
+    val context = LocalContext.current
+    val uses24HourClock = DateFormat.is24HourFormat(context)
     var selectedHour by remember(initial.id) { mutableIntStateOf(initial.hour) }
     var selectedMinute by remember(initial.id) { mutableIntStateOf(initial.minute) }
     var manualEntryVisible by remember(initial.id) { mutableStateOf(false) }
@@ -994,8 +1002,19 @@ internal fun AlarmEditor(
     }
     val shiftInputValid = !useShift || shiftPatternCandidate?.isValid == true
     val manualTimeValid = !manualEntryVisible || parseManualTime(manualTime, uses24HourClock) != null
+    val tonePreview = remember(initial.id) { AlarmTonePreview(context) }
+    var tonePreviewState by remember(initial.id) { mutableStateOf(TonePreviewState.IDLE) }
+    DisposableEffect(tonePreview) {
+        onDispose { tonePreview.stop() }
+    }
+    val toneTitle = remember(soundUri) {
+        runCatching {
+            RingtoneManager.getRingtone(context, Uri.parse(soundUri))?.getTitle(context)
+        }.getOrNull() ?: "Tono predeterminado"
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let { uri ->
+            tonePreview.stop()
             soundUri = uri.toString()
         }
     }
@@ -1011,6 +1030,8 @@ internal fun AlarmEditor(
                 days = if (useShift) emptySet() else days,
                 shiftPattern = pattern,
                 soundUri = soundUri.ifBlank { AlarmStore.defaultAlarmUri() },
+                vibrate = vibrate,
+                snoozeMinutes = snoozeMinutes,
                 enabled = true,
                 mathChallengeEnabled = mathChallenge,
                 snoozedUntilMillis = null
@@ -1215,6 +1236,48 @@ internal fun AlarmEditor(
                             }
                             Switch(checked = mathChallenge, onCheckedChange = { mathChallenge = it })
                         }
+                        Text("Posponer", fontWeight = FontWeight.SemiBold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SUPPORTED_SNOOZE_MINUTES.sorted().forEach { minutes ->
+                                FilterChip(
+                                    selected = snoozeMinutes == minutes,
+                                    onClick = { snoozeMinutes = minutes },
+                                    label = { Text("$minutes min") },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("snooze_$minutes")
+                                )
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Vibration, contentDescription = null, tint = DespiertaAccent)
+                            Spacer(Modifier.width(9.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Vibración", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (vibrate) "Vibrará mientras suena" else "Desactivada para esta alarma",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Switch(
+                                checked = vibrate,
+                                onCheckedChange = { vibrate = it },
+                                modifier = Modifier.testTag("alarm_vibration")
+                            )
+                        }
+                        Text("Tono de alarma", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            toneTitle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("selected_tone")
+                        )
                         OutlinedButton(
                             onClick = {
                                 picker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
@@ -1229,10 +1292,42 @@ internal fun AlarmEditor(
                             Spacer(Modifier.width(8.dp))
                             Text("Elegir sonido")
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Vibration, contentDescription = null, tint = DespiertaAccent)
-                            Spacer(Modifier.width(9.dp))
-                            Text("Vibración activa al sonar", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        OutlinedButton(
+                            onClick = {
+                                if (
+                                    tonePreviewState == TonePreviewState.PREPARING ||
+                                    tonePreviewState == TonePreviewState.PLAYING ||
+                                    tonePreviewState == TonePreviewState.PLAYING_FALLBACK
+                                ) {
+                                    tonePreview.stop()
+                                } else {
+                                    tonePreview.play(soundUri) { tonePreviewState = it }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("preview_tone")
+                        ) {
+                            val previewActive = tonePreviewState == TonePreviewState.PREPARING ||
+                                tonePreviewState == TonePreviewState.PLAYING ||
+                                tonePreviewState == TonePreviewState.PLAYING_FALLBACK
+                            Icon(
+                                if (previewActive) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
+                                contentDescription = null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (previewActive) "Detener preescucha" else "Preescuchar tono")
+                        }
+                        when (tonePreviewState) {
+                            TonePreviewState.PLAYING_FALLBACK -> Text(
+                                "El tono elegido no está disponible; se escucha el predeterminado.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                            TonePreviewState.FAILED -> Text(
+                                "No se pudo reproducir el tono. Android usará un sonido predeterminado al sonar.",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                            else -> Unit
                         }
                     }
                     Spacer(Modifier.height(18.dp))

@@ -47,6 +47,8 @@ class AlarmPersistenceInstrumentedTest {
                 4,
                 setOf(LocalDate.of(2026, 10, 5))
             ),
+            vibrate = false,
+            snoozeMinutes = 15,
             mathChallengeEnabled = true,
             snoozedUntilMillis = System.currentTimeMillis() + 300_000L
         )
@@ -154,6 +156,94 @@ class AlarmPersistenceInstrumentedTest {
         assertTrue(restored?.enabled == true)
         assertTrue(restored?.snoozedUntilMillis != null)
         assertTrue(AlarmScheduler(context).hasPendingIntent(alarm.id))
+    }
+
+    @Test
+    fun everySupportedSnoozeDurationIsPersistedAndRegisteredOnce() {
+        SUPPORTED_SNOOZE_MINUTES.sorted().forEach { minutes ->
+            val alarm = store.newAlarm().copy(snoozeMinutes = minutes)
+            createdIds += alarm.id
+            store.save(alarm)
+            val before = System.currentTimeMillis()
+
+            val result = AlarmScheduler(context).snooze(alarm)
+            val expected = AlarmScheduleRegistry(context).expectedTrigger(alarm.id)
+
+            assertTrue(result != ScheduleResult.FAILED)
+            assertNotNull(expected)
+            assertTrue(expected!! >= before + minutes * 60_000L)
+            assertTrue(expected <= System.currentTimeMillis() + minutes * 60_000L)
+            assertEquals(minutes, store.find(alarm.id)?.snoozeMinutes)
+            assertEquals(expected, store.find(alarm.id)?.snoozedUntilMillis)
+        }
+    }
+
+    @Test
+    fun unsupportedSnoozeIsRejectedWithoutChangingStoredAlarm() {
+        val alarm = store.newAlarm().copy(snoozeMinutes = 10)
+        createdIds += alarm.id
+        store.save(alarm)
+
+        val result = AlarmScheduler(context).snooze(alarm, minutes = 0)
+
+        assertEquals(ScheduleResult.FAILED, result)
+        assertEquals(null, store.find(alarm.id)?.snoozedUntilMillis)
+        assertFalse(AlarmScheduler(context).hasPendingIntent(alarm.id))
+    }
+
+    @Test
+    fun recordsFromOlderVersionsReceiveSafeSoundControlDefaults() {
+        val legacy = JSONObject()
+            .put("id", 7002)
+            .put("hour", 6)
+            .put("minute", 30)
+            .put("label", "Alarma 2.2")
+            .put("days", JSONArray())
+            .put("soundUri", "content://test/legacy")
+            .put("enabled", true)
+        prefs.edit().putString("items", JSONArray().put(legacy).toString()).commit()
+        createdIds += 7002
+
+        val restored = requireNotNull(store.find(7002))
+
+        assertTrue(restored.vibrate)
+        assertEquals(DEFAULT_SNOOZE_MINUTES, restored.snoozeMinutes)
+    }
+
+    @Test
+    fun invalidStoredSnoozeValueFallsBackWithoutDiscardingAlarm() {
+        val alarm = store.newAlarm().copy(label = "Conservar", snoozeMinutes = 60)
+        createdIds += alarm.id
+
+        store.save(alarm)
+
+        assertEquals(DEFAULT_SNOOZE_MINUTES, store.find(alarm.id)?.snoozeMinutes)
+        assertEquals("Conservar", store.find(alarm.id)?.label)
+    }
+
+    @Test
+    fun everySystemRescheduleActionReplacesTheSamePendingAlarm() {
+        val alarm = store.newAlarm().copy(
+            enabled = true,
+            shiftPattern = ShiftPattern.from(LocalDate.now(), 12, 4)
+        )
+        createdIds += alarm.id
+        store.save(alarm)
+        val scheduler = AlarmScheduler(context)
+        val actions = listOf(
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_USER_UNLOCKED,
+            android.app.AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+        )
+
+        actions.forEach { action ->
+            BootReceiver().onReceive(context, Intent(action))
+            assertTrue("No se reprogramó tras $action", scheduler.hasPendingIntent(alarm.id))
+            assertNotNull(AlarmScheduleRegistry(context).expectedTrigger(alarm.id))
+        }
     }
 
     @Test

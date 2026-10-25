@@ -15,6 +15,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.Calendar
 
 @RunWith(AndroidJUnit4::class)
 class AlarmDeliveryInstrumentedTest {
@@ -64,6 +65,47 @@ class AlarmDeliveryInstrumentedTest {
         assertTrue(scheduler.schedule(alarm) == ScheduleResult.EXACT)
         turnScreenOff()
 
+        val notificationVisible = waitForAlarmNotification()
+
+        assertTrue("La alarma no inició su servicio en 30 segundos", notificationVisible)
+        val fired = requireNotNull(store.find(alarm.id))
+        assertFalse(fired.enabled)
+        assertTrue(fired.snoozedUntilMillis == null)
+    }
+
+    @Test
+    fun repeatedAlarmIsRegisteredForItsNextOccurrenceAfterDelivery() {
+        val now = System.currentTimeMillis()
+        val alarm = store.newAlarm().copy(
+            label = "Prueba repetitiva",
+            days = (Calendar.SUNDAY..Calendar.SATURDAY).toSet(),
+            enabled = true,
+            vibrate = false,
+            soundUri = "content://invalid/despierta-test",
+            snoozedUntilMillis = now
+        )
+        alarmId = alarm.id
+        store.save(alarm)
+        AlarmScheduleRegistry(context).record(alarm.id, now)
+
+        AlarmReceiver().onReceive(
+            context,
+            Intent(context, AlarmReceiver::class.java)
+                .setAction(AlarmScheduler.ACTION_FIRE_ALARM)
+                .putExtra(AlarmScheduler.EXTRA_ID, alarm.id)
+                .putExtra(AlarmScheduler.EXTRA_EXPECTED_TRIGGER_AT, now)
+        )
+
+        assertTrue("No apareció la alarma repetitiva", waitForAlarmNotification())
+        val restored = requireNotNull(store.find(alarm.id))
+        assertTrue(restored.enabled)
+        assertTrue(restored.snoozedUntilMillis == null)
+        assertTrue(AlarmScheduler(context).hasPendingIntent(alarm.id))
+        val nextTrigger = requireNotNull(AlarmScheduleRegistry(context).expectedTrigger(alarm.id))
+        assertTrue(nextTrigger > now)
+    }
+
+    private fun waitForAlarmNotification(): Boolean {
         val notificationManager = context.getSystemService(NotificationManager::class.java)
         val deadline = System.currentTimeMillis() + 30_000L
         var notificationVisible = false
@@ -72,11 +114,7 @@ class AlarmDeliveryInstrumentedTest {
                 .any { it.id == AlarmService.NOTIFICATION_ID }
             if (!notificationVisible) Thread.sleep(250L)
         }
-
-        assertTrue("La alarma no inició su servicio en 30 segundos", notificationVisible)
-        val fired = requireNotNull(store.find(alarm.id))
-        assertFalse(fired.enabled)
-        assertTrue(fired.snoozedUntilMillis == null)
+        return notificationVisible
     }
 
     private fun turnScreenOff() {

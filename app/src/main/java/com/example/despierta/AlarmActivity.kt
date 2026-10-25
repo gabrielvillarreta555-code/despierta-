@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -88,6 +90,7 @@ class AlarmActivity : ComponentActivity() {
         val challenge = rememberSaveable(id) { MathChallenge.create(id) }
         var answer by rememberSaveable(id) { mutableStateOf("") }
         var errorText by rememberSaveable(id) { mutableStateOf<String?>(null) }
+        var operationError by rememberSaveable(id) { mutableStateOf<String?>(null) }
         val keyboard = LocalSoftwareKeyboardController.current
 
         fun stopIfAllowed() {
@@ -154,11 +157,25 @@ class AlarmActivity : ComponentActivity() {
                         )
                     }
                     Spacer(Modifier.height(20.dp))
-                    Text(
-                        alarm?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "--:--",
-                        fontSize = 80.sp,
-                        fontWeight = FontWeight.Light
-                    )
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val timeSize = when {
+                            maxWidth < 300.dp -> 58.sp
+                            maxWidth < 360.dp -> 68.sp
+                            else -> 80.sp
+                        }
+                        Text(
+                            alarm?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "--:--",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = timeSize,
+                            lineHeight = timeSize,
+                            fontWeight = FontWeight.Light,
+                            maxLines = 1,
+                            modifier = Modifier.testTag("ringing_time")
+                        )
+                    }
                     Text(
                         alarm?.label ?: "Alarma",
                         fontSize = 22.sp,
@@ -194,15 +211,37 @@ class AlarmActivity : ComponentActivity() {
                     }
 
                     Button(
-                        onClick = { command(AlarmService.ACTION_SNOOZE, id) },
-                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                        onClick = {
+                            operationError = null
+                            val result = alarm?.let {
+                                AlarmScheduler(this@AlarmActivity).snooze(
+                                    AlarmStore(this@AlarmActivity).find(id) ?: it,
+                                    it.snoozeMinutes
+                                )
+                            }
+                            if (result != null && result != ScheduleResult.FAILED) {
+                                command(AlarmService.ACTION_STOP, id)
+                            } else {
+                                operationError =
+                                    "No se pudo posponer. La alarma seguirá activa para que puedas intentarlo de nuevo."
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(60.dp).testTag("ringing_snooze")
                     ) {
-                        Text("Posponer 5 minutos")
+                        Text("Posponer ${alarm?.snoozeMinutes ?: DEFAULT_SNOOZE_MINUTES} minutos")
+                    }
+                    operationError?.let { message ->
+                        Text(
+                            message,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = { stopIfAllowed() },
-                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                        modifier = Modifier.fillMaxWidth().height(60.dp).testTag("ringing_stop")
                     ) {
                         Text(if (alarm?.mathChallengeEnabled == true) "Comprobar y detener" else "Detener")
                     }

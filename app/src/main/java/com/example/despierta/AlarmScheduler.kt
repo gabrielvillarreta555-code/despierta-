@@ -97,8 +97,8 @@ class AlarmScheduler(context: Context) {
         }
     }
 
-    fun snooze(alarm: AlarmModel, minutes: Int = DEFAULT_SNOOZE_MINUTES): ScheduleResult {
-        if (minutes !in 1..MAX_SNOOZE_MINUTES) {
+    fun snooze(alarm: AlarmModel, minutes: Int = alarm.snoozeMinutes): ScheduleResult {
+        if (minutes !in SUPPORTED_SNOOZE_MINUTES) {
             AlarmLog.error("snooze_rejected", "id=${alarm.id} minutes=$minutes")
             return ScheduleResult.FAILED
         }
@@ -168,9 +168,6 @@ class AlarmScheduler(context: Context) {
         const val EXTRA_EXPECTED_TRIGGER_AT = "expected_trigger_at"
         const val ACTION_FIRE_ALARM = "com.example.despierta.action.FIRE_ALARM"
         const val ACTION_SHOW_ALARMS = "com.example.despierta.action.SHOW_ALARMS"
-        const val DEFAULT_SNOOZE_MINUTES = 5
-        private const val MAX_SNOOZE_MINUTES = 24 * 60
-
         internal fun nextTriggerMillis(
             alarm: AlarmModel,
             nowMillis: Long = System.currentTimeMillis(),
