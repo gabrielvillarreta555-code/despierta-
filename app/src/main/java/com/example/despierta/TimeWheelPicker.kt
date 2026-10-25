@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +39,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import java.util.Locale
-import kotlin.math.abs
 
 internal data class SelectedTime(val hour24: Int, val minute: Int)
 
@@ -203,24 +203,24 @@ private fun <T> WheelColumn(
     val state = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
     val scope = rememberCoroutineScope()
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = state)
+    val latestSelected = rememberUpdatedState(selected)
+    val latestOnSelected = rememberUpdatedState(onSelected)
 
     LaunchedEffect(selectedIndex) {
         if (!state.isScrollInProgress && state.firstVisibleItemIndex != selectedIndex) {
             state.scrollToItem(selectedIndex)
         }
     }
-    LaunchedEffect(state, entries, selected) {
+    LaunchedEffect(state, entries) {
         snapshotFlow { state.isScrollInProgress }
             .distinctUntilChanged()
             .filter { !it }
             .collect {
-                val layout = state.layoutInfo
-                val viewportCenter = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-                val centered = layout.visibleItemsInfo.minByOrNull { item ->
-                    abs(item.offset + item.size / 2 - viewportCenter)
-                } ?: return@collect
-                entries.getOrNull(centered.index)?.value?.let { value ->
-                    if (value != selected) onSelected(value)
+                // With one item of vertical content padding, the first visible item is the
+                // centered selection. Using geometry here can alternate between two equally
+                // close rows and keep Compose permanently busy on slow emulators.
+                entries.getOrNull(state.firstVisibleItemIndex)?.value?.let { value ->
+                    if (value != latestSelected.value) latestOnSelected.value(value)
                 }
             }
     }
