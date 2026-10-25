@@ -46,3 +46,18 @@ En el registro deben aparecer, según el caso: `schedule_exact`, `receiver_fired
 `ring_stopped` y `reconcile_complete`. Cualquier `schedule_failed`,
 `service_start_failed` o `sound_unavailable` debe conservarse junto con modelo de
 teléfono, versión Android y estado de permisos.
+
+## Cobertura automática de Despierta 2.2
+
+- Las pruebas JVM verifican ciclos 12×4, 7×7 y personalizados, cambios de mes y
+  año, año bisiesto, horario de verano, excepciones y conversiones 12/24 horas.
+- Las pruebas instrumentadas verifican almacenamiento corrupto, identificadores
+  duplicados, restauración por arranque/actualización, reemplazo de
+  `PendingIntent`, posponer y entrega exacta con la pantalla del emulador apagada.
+- GitHub Actions ejecuta las pruebas instrumentadas en Android 16 (API 36).
+
+La invocación directa del receptor de arranque comprueba la reprogramación, pero
+no sustituye una prueba de reinicio físico completo. Android 13, 14 y 15, los
+fabricantes con políticas agresivas de batería, el volumen audible y la pantalla
+de bloqueo real requieren pruebas manuales en dispositivos. «Forzar detención»
+continúa bloqueando alarmas y receptores hasta que el usuario abre la aplicación.

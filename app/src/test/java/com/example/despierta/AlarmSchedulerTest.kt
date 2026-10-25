@@ -149,6 +149,51 @@ class AlarmSchedulerTest {
     }
 
     @Test
+    fun twelveByFourCycleCrossesLeapDayAndStartsNextBlockCorrectly() {
+        // Feb 20 through Mar 2 are twelve work days in leap year 2028.
+        val pattern = ShiftPattern.from(LocalDate.of(2028, 2, 20), 12, 4)
+        val now = instant(2028, Calendar.MARCH, 4, 6, 0)
+
+        val result = AlarmScheduler.nextTriggerMillis(
+            alarm(hour = 7, minute = 0, pattern = pattern),
+            now,
+            utc
+        )
+
+        assertEquals(instant(2028, Calendar.MARCH, 7, 7, 0), result)
+    }
+
+    @Test
+    fun twelveByFourCycleCrossesDecemberAndJanuary() {
+        val pattern = ShiftPattern.from(LocalDate.of(2027, 12, 25), 12, 4)
+        val now = instant(2028, Calendar.JANUARY, 7, 6, 0)
+
+        val result = AlarmScheduler.nextTriggerMillis(
+            alarm(hour = 5, minute = 45, pattern = pattern),
+            now,
+            utc
+        )
+
+        assertEquals(instant(2028, Calendar.JANUARY, 10, 5, 45), result)
+    }
+
+    @Test
+    fun nonexistentDstTimeMovesToFirstValidLocalInstant() {
+        val newYork = TimeZone.getTimeZone("America/New_York")
+        val pattern = ShiftPattern.from(LocalDate.of(2026, 3, 8), 12, 4)
+        val now = instant(2026, Calendar.MARCH, 8, 1, 0, newYork)
+
+        val result = AlarmScheduler.nextTriggerMillis(
+            alarm(hour = 2, minute = 30, pattern = pattern),
+            now,
+            newYork
+        )
+
+        // 02:30 does not exist on this date. java.time resolves it to 03:30.
+        assertEquals(instant(2026, Calendar.MARCH, 8, 3, 30, newYork), result)
+    }
+
+    @Test
     fun shiftAlarmBeforeCycleStartWaitsForStartDate() {
         val pattern = ShiftPattern.from(LocalDate.of(2026, 10, 1), 12, 4)
         val now = instant(2026, Calendar.SEPTEMBER, 29, 8, 0)

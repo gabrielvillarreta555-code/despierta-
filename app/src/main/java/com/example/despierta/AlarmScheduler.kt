@@ -38,7 +38,11 @@ class AlarmScheduler(context: Context) {
             }
             resolvedTriggerAt = triggerAt
             val firingIntent = requireNotNull(
-                alarmPendingIntent(alarm.id, PendingIntent.FLAG_UPDATE_CURRENT)
+                alarmPendingIntent(
+                    alarm.id,
+                    PendingIntent.FLAG_UPDATE_CURRENT,
+                    triggerAt
+                )
             )
             resolvedFiringIntent = firingIntent
             val showIntent = PendingIntent.getActivity(
@@ -56,6 +60,7 @@ class AlarmScheduler(context: Context) {
                     AlarmManager.AlarmClockInfo(triggerAt, showIntent),
                     firingIntent
                 )
+                AlarmScheduleRegistry(appContext).record(alarm.id, triggerAt)
                 AlarmLog.info(
                     "schedule_exact",
                     "id=${alarm.id} triggerAt=$triggerAt snooze=${snoozeAt != null}"
@@ -65,6 +70,7 @@ class AlarmScheduler(context: Context) {
                 // Android 12/12L can reach this state until the user grants special
                 // access. Keep a best-effort alarm while the UI explains the setting.
                 manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, firingIntent)
+                AlarmScheduleRegistry(appContext).record(alarm.id, triggerAt)
                 AlarmLog.warning(
                     "schedule_inexact",
                     "id=${alarm.id} triggerAt=$triggerAt reason=exact_permission_missing"
@@ -76,11 +82,13 @@ class AlarmScheduler(context: Context) {
             val triggerAt = resolvedTriggerAt
             val firingIntent = resolvedFiringIntent
             if (triggerAt != null && firingIntent != null) {
-                runCatching {
+                val fallbackSucceeded = runCatching {
                     manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, firingIntent)
+                    AlarmScheduleRegistry(appContext).record(alarm.id, triggerAt)
                 }.onFailure {
                     AlarmLog.error("schedule_fallback_failed", "id=${alarm.id}", it)
-                }
+                }.isSuccess
+                if (!fallbackSucceeded) return ScheduleResult.FAILED
             }
             ScheduleResult.INEXACT_PERMISSION_REQUIRED
         } catch (error: RuntimeException) {
@@ -90,11 +98,22 @@ class AlarmScheduler(context: Context) {
     }
 
     fun snooze(alarm: AlarmModel, minutes: Int = DEFAULT_SNOOZE_MINUTES): ScheduleResult {
+        if (minutes !in 1..MAX_SNOOZE_MINUTES) {
+            AlarmLog.error("snooze_rejected", "id=${alarm.id} minutes=$minutes")
+            return ScheduleResult.FAILED
+        }
         val triggerAt = System.currentTimeMillis() + minutes * 60_000L
         val snoozed = alarm.copy(snoozedUntilMillis = triggerAt)
-        AlarmStore(appContext).save(snoozed)
+        val store = AlarmStore(appContext)
+        store.save(snoozed)
         AlarmLog.info("snooze_saved", "id=${alarm.id} triggerAt=$triggerAt minutes=$minutes")
-        return schedule(snoozed)
+        val result = schedule(snoozed)
+        if (result == ScheduleResult.FAILED) {
+            // Do not display a snooze that AlarmManager failed to register.
+            store.save(alarm)
+            AlarmLog.error("snooze_rolled_back", "id=${alarm.id}")
+        }
+        return result
     }
 
     fun reconcile(alarms: List<AlarmModel>) {
@@ -109,10 +128,17 @@ class AlarmScheduler(context: Context) {
     }
 
     fun cancel(id: Int) {
-        alarmPendingIntent(id, PendingIntent.FLAG_NO_CREATE)?.let { pending ->
-            manager.cancel(pending)
-            pending.cancel()
-            AlarmLog.info("schedule_cancelled", "id=$id")
+        runCatching {
+            alarmPendingIntent(id, PendingIntent.FLAG_NO_CREATE)?.let { pending ->
+                manager.cancel(pending)
+                pending.cancel()
+                AlarmLog.info("schedule_cancelled", "id=$id")
+            }
+            AlarmScheduleRegistry(appContext).clear(id)
+        }.onFailure {
+            // Cancellation failures must not crash alarm editing or prevent other alarms from
+            // being reconciled. A stale delivery is still rejected against the stored model.
+            AlarmLog.error("schedule_cancel_failed", "id=$id", it)
         }
     }
 
@@ -122,21 +148,28 @@ class AlarmScheduler(context: Context) {
     fun canScheduleExactAlarms(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()
 
-    private fun alarmPendingIntent(id: Int, flags: Int): PendingIntent? = PendingIntent.getBroadcast(
+    private fun alarmPendingIntent(
+        id: Int,
+        flags: Int,
+        triggerAtMillis: Long = 0L
+    ): PendingIntent? = PendingIntent.getBroadcast(
         appContext,
         id,
         Intent(appContext, AlarmReceiver::class.java)
             .setAction(ACTION_FIRE_ALARM)
             .setData(alarmUri(id, "fire"))
-            .putExtra(EXTRA_ID, id),
+            .putExtra(EXTRA_ID, id)
+            .putExtra(EXTRA_EXPECTED_TRIGGER_AT, triggerAtMillis),
         flags or PendingIntent.FLAG_IMMUTABLE
     )
 
     companion object {
         const val EXTRA_ID = "alarm_id"
+        const val EXTRA_EXPECTED_TRIGGER_AT = "expected_trigger_at"
         const val ACTION_FIRE_ALARM = "com.example.despierta.action.FIRE_ALARM"
         const val ACTION_SHOW_ALARMS = "com.example.despierta.action.SHOW_ALARMS"
         const val DEFAULT_SNOOZE_MINUTES = 5
+        private const val MAX_SNOOZE_MINUTES = 24 * 60
 
         internal fun nextTriggerMillis(
             alarm: AlarmModel,

@@ -3,6 +3,7 @@ package com.example.despierta
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
@@ -80,12 +81,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimeInput
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +95,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -120,10 +121,16 @@ internal enum class AppSection(val label: String, val icon: ImageVector) {
 internal data class PermissionUiState(
     val needsExactAlarm: Boolean,
     val needsNotifications: Boolean,
-    val needsFullScreen: Boolean
+    val needsFullScreen: Boolean,
+    val needsAlarmChannel: Boolean
 ) {
     val pendingCount: Int
-        get() = listOf(needsExactAlarm, needsNotifications, needsFullScreen).count { it }
+        get() = listOf(
+            needsExactAlarm,
+            needsNotifications,
+            needsFullScreen,
+            needsAlarmChannel
+        ).count { it }
 }
 
 @Composable
@@ -142,7 +149,8 @@ internal fun DespiertaApp(
     onHapticsChanged: (Boolean) -> Unit,
     onRequestExactAlarm: () -> Unit,
     onRequestNotifications: () -> Unit,
-    onRequestFullScreen: () -> Unit
+    onRequestFullScreen: () -> Unit,
+    onRequestAlarmChannel: () -> Unit
 ) {
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -205,7 +213,8 @@ internal fun DespiertaApp(
                     onHapticsChanged = onHapticsChanged,
                     onRequestExactAlarm = onRequestExactAlarm,
                     onRequestNotifications = onRequestNotifications,
-                    onRequestFullScreen = onRequestFullScreen
+                    onRequestFullScreen = onRequestFullScreen,
+                    onRequestAlarmChannel = onRequestAlarmChannel
                 )
             }
         }
@@ -257,7 +266,7 @@ private fun BrandBar() {
                 color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Text(
-                    "2.1",
+                    BuildConfig.VERSION_NAME,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     color = DespiertaAccent,
                     fontWeight = FontWeight.Bold,
@@ -766,7 +775,8 @@ private fun SettingsScreen(
     onHapticsChanged: (Boolean) -> Unit,
     onRequestExactAlarm: () -> Unit,
     onRequestNotifications: () -> Unit,
-    onRequestFullScreen: () -> Unit
+    onRequestFullScreen: () -> Unit,
+    onRequestAlarmChannel: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("settings_screen"),
@@ -812,6 +822,13 @@ private fun SettingsScreen(
                             title = "Pantalla completa",
                             detail = "Abre la alarma sobre la pantalla bloqueada",
                             onClick = onRequestFullScreen
+                        )
+                    }
+                    if (permissionState.needsAlarmChannel) {
+                        PermissionRow(
+                            title = "Canal de alarmas bloqueado",
+                            detail = "Actívalo para ver los controles en pantalla",
+                            onClick = onRequestAlarmChannel
                         )
                     }
                 }
@@ -936,20 +953,28 @@ private fun SettingsStatusRow(
 internal fun AlarmEditor(
     initial: AlarmModel,
     isNew: Boolean,
+    hapticsEnabled: Boolean,
     onDismiss: () -> Unit,
     onSave: (AlarmModel) -> Unit
 ) {
+    val validInitialShift = initial.shiftPattern?.takeIf { it.isValid }
     var label by remember(initial.id) { mutableStateOf(initial.label) }
     var days by remember(initial.id) { mutableStateOf(initial.days) }
     var soundUri by remember(initial.id) { mutableStateOf(initial.soundUri) }
     var mathChallenge by remember(initial.id) { mutableStateOf(initial.mathChallengeEnabled) }
     var useShift by remember(initial.id) { mutableStateOf(initial.shiftPattern != null) }
-    var workDays by remember(initial.id) { mutableStateOf(initial.shiftPattern?.workDays?.toString() ?: "12") }
-    var restDays by remember(initial.id) { mutableStateOf(initial.shiftPattern?.restDays?.toString() ?: "4") }
+    var workDays by remember(initial.id) { mutableStateOf(validInitialShift?.workDays?.toString() ?: "12") }
+    var restDays by remember(initial.id) { mutableStateOf(validInitialShift?.restDays?.toString() ?: "4") }
     var startEpochDay by remember(initial.id) {
-        mutableLongStateOf(initial.shiftPattern?.startEpochDay ?: LocalDate.now().toEpochDay())
+        mutableLongStateOf(validInitialShift?.startEpochDay ?: LocalDate.now().toEpochDay())
     }
-    val timePickerState = rememberTimePickerState(initial.hour, initial.minute, true)
+    val uses24HourClock = DateFormat.is24HourFormat(LocalContext.current)
+    var selectedHour by remember(initial.id) { mutableIntStateOf(initial.hour) }
+    var selectedMinute by remember(initial.id) { mutableIntStateOf(initial.minute) }
+    var manualEntryVisible by remember(initial.id) { mutableStateOf(false) }
+    var manualTime by remember(initial.id, uses24HourClock) {
+        mutableStateOf(formatManualTime(initial.hour, initial.minute, uses24HourClock))
+    }
 
     val shiftPatternCandidate = if (useShift) {
         val work = workDays.toIntOrNull()
@@ -959,7 +984,7 @@ internal fun AlarmEditor(
                 startEpochDay = startEpochDay,
                 workDays = work,
                 restDays = rest,
-                exceptionEpochDays = initial.shiftPattern?.exceptionEpochDays ?: emptySet()
+                exceptionEpochDays = validInitialShift?.exceptionEpochDays ?: emptySet()
             )
         } else {
             null
@@ -968,6 +993,7 @@ internal fun AlarmEditor(
         null
     }
     val shiftInputValid = !useShift || shiftPatternCandidate?.isValid == true
+    val manualTimeValid = !manualEntryVisible || parseManualTime(manualTime, uses24HourClock) != null
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let { uri ->
             soundUri = uri.toString()
@@ -979,8 +1005,8 @@ internal fun AlarmEditor(
         if (useShift && pattern == null) return
         onSave(
             initial.copy(
-                hour = timePickerState.hour,
-                minute = timePickerState.minute,
+                hour = selectedHour,
+                minute = selectedMinute,
                 label = label.trim().ifBlank { "Alarma" },
                 days = if (useShift) emptySet() else days,
                 shiftPattern = pattern,
@@ -1012,7 +1038,9 @@ internal fun AlarmEditor(
                         Text(if (isNew) "Nueva alarma" else "Editar alarma", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                         Text("Hora, repetición y sonido", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                     }
-                    Button(onClick = ::save, enabled = shiftInputValid) { Text("Guardar") }
+                    Button(onClick = ::save, enabled = shiftInputValid && manualTimeValid) {
+                        Text("Guardar")
+                    }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                 Column(
@@ -1024,8 +1052,59 @@ internal fun AlarmEditor(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     EditorSection("HORA") {
-                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            TimeInput(timePickerState)
+                        TimeWheelPicker(
+                            hour24 = selectedHour,
+                            minute = selectedMinute,
+                            is24Hour = uses24HourClock,
+                            hapticsEnabled = hapticsEnabled,
+                            onTimeChanged = { hour, minute ->
+                                selectedHour = hour
+                                selectedMinute = minute
+                                manualTime = formatManualTime(hour, minute, uses24HourClock)
+                            }
+                        )
+                        TextButton(
+                            onClick = {
+                                manualEntryVisible = !manualEntryVisible
+                                manualTime = formatManualTime(
+                                    selectedHour,
+                                    selectedMinute,
+                                    uses24HourClock
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (manualEntryVisible) "Ocultar entrada manual" else "Introducir hora manualmente")
+                        }
+                        if (manualEntryVisible) {
+                            OutlinedTextField(
+                                value = manualTime,
+                                onValueChange = { entered ->
+                                    manualTime = entered.take(11)
+                                    parseManualTime(entered, uses24HourClock)?.let { parsed ->
+                                        selectedHour = parsed.hour24
+                                        selectedMinute = parsed.minute
+                                    }
+                                },
+                                label = {
+                                    Text(if (uses24HourClock) "Hora (HH:MM)" else "Hora (HH:MM AM/PM)")
+                                },
+                                isError = !manualTimeValid,
+                                supportingText = {
+                                    if (!manualTimeValid) {
+                                        Text(
+                                            if (uses24HourClock) {
+                                                "Usa una hora entre 00:00 y 23:59"
+                                            } else {
+                                                "Usa una hora como 07:30 AM o 07:30 PM"
+                                            }
+                                        )
+                                    }
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                modifier = Modifier.fillMaxWidth().testTag("manual_time_input")
+                            )
                         }
                         OutlinedTextField(
                             value = label,
