@@ -7,7 +7,9 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -38,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -96,11 +101,23 @@ class AlarmActivity : ComponentActivity() {
 
         MaterialTheme(
             colorScheme = darkColorScheme(
-                primary = Color(0xFF6200EE),
-                background = Color(0xFF121212)
+                primary = Color(0xFF65E6D8),
+                onPrimary = Color(0xFF062326),
+                background = Color(0xFF061315),
+                surface = Color(0xFF102326),
+                onSurface = Color(0xFFF1FFFD),
+                onSurfaceVariant = Color(0xFFA7C7C3)
             )
         ) {
-            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF061315), Color(0xFF10343A))
+                        )
+                    )
+            ) {
                 Column(
                     Modifier
                         .fillMaxSize()
@@ -111,12 +128,31 @@ class AlarmActivity : ComponentActivity() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(
-                        Icons.Rounded.AlarmOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(96.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            "DESPIERTA 2.0",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.4.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(22.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        shape = CircleShape
+                    ) {
+                        Icon(
+                            Icons.Rounded.AlarmOn,
+                            contentDescription = null,
+                            modifier = Modifier.padding(20.dp).size(72.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     Spacer(Modifier.height(20.dp))
                     Text(
                         alarm?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "--:--",
@@ -126,7 +162,7 @@ class AlarmActivity : ComponentActivity() {
                     Text(
                         alarm?.label ?: "Alarma",
                         fontSize = 22.sp,
-                        color = Color.LightGray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(if (alarm?.mathChallengeEnabled == true) 28.dp else 52.dp))
 

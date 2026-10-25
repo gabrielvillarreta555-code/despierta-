@@ -30,11 +30,14 @@ jobs:
       - name: Compilar APK instalable
         run: ./gradlew assembleDebug --stacktrace
 
+      - name: Preparar APK Despierta 2.0
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Despierta-2.0-Visual.apk
+
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Despierta-2.0-Visual
+          path: app/build/outputs/apk/debug/Despierta-2.0-Visual.apk
           if-no-files-found: error
           retention-days: 14
 
