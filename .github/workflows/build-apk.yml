@@ -97,35 +97,29 @@ jobs:
             adb shell cmd package compile -m speed -f com.example.despierta
             adb shell cmd package compile -m speed -f com.example.despierta.test
             adb logcat -c
-            run_suite() {
-              output="$1"
-              classes="$2"
-              adb shell am force-stop com.example.despierta || true
-              set +e
-              adb shell am instrument -w -r \
-                -e class "$classes" \
-                com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner \
-                > "$output" 2>&1
-              suite_status=$?
-              set -e
-              cat "$output"
-              if [ "$suite_status" -ne 0 ] || ! grep -q '^OK (' "$output"; then
-                adb logcat -d -v threadtime \
-                  > app/build/outputs/androidTest-results/diagnostics/logcat.txt || true
-                return 1
-              fi
-            }
-            run_suite \
-              app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt \
-              com.example.despierta.AlarmPersistenceInstrumentedTest,com.example.despierta.AlarmDeliveryInstrumentedTest
-            run_suite \
-              app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt \
-              com.example.despierta.DespiertaUiInstrumentedTest
+            adb shell am force-stop com.example.despierta || true
+            adb shell am instrument -w -r \
+              -e class com.example.despierta.AlarmPersistenceInstrumentedTest,com.example.despierta.AlarmDeliveryInstrumentedTest \
+              com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner \
+              > app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt 2>&1 || true
+            cat app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt
+            grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt
+            adb shell am force-stop com.example.despierta || true
+            adb shell am instrument -w -r \
+              -e class com.example.despierta.DespiertaUiInstrumentedTest \
+              com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner \
+              > app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt 2>&1 || true
+            cat app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt
+            grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt
             adb shell settings put system font_scale 1.30
-            run_suite \
-              app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt \
-              com.example.despierta.AlarmScreenInstrumentedTest
+            adb shell am force-stop com.example.despierta || true
+            adb shell am instrument -w -r \
+              -e class com.example.despierta.AlarmScreenInstrumentedTest \
+              com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner \
+              > app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt 2>&1 || true
             adb shell settings put system font_scale 1.0 || true
+            cat app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
+            grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
             cat \
               app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt \
               app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt \
