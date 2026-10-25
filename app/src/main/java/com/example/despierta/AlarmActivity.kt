@@ -101,12 +101,12 @@ class AlarmActivity : ComponentActivity() {
 
         MaterialTheme(
             colorScheme = darkColorScheme(
-                primary = Color(0xFF65E6D8),
-                onPrimary = Color(0xFF062326),
-                background = Color(0xFF061315),
-                surface = Color(0xFF102326),
-                onSurface = Color(0xFFF1FFFD),
-                onSurfaceVariant = Color(0xFFA7C7C3)
+                primary = Color(0xFFFFB66D),
+                onPrimary = Color(0xFF2C1704),
+                background = Color(0xFF0C0E12),
+                surface = Color(0xFF171A20),
+                onSurface = Color(0xFFF4F1EB),
+                onSurfaceVariant = Color(0xFFAAAEB7)
             )
         ) {
             Box(
@@ -114,7 +114,7 @@ class AlarmActivity : ComponentActivity() {
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xFF061315), Color(0xFF10343A))
+                            listOf(Color(0xFF0C0E12), Color(0xFF241A12))
                         )
                     )
             ) {
@@ -133,7 +133,7 @@ class AlarmActivity : ComponentActivity() {
                         shape = RoundedCornerShape(50)
                     ) {
                         Text(
-                            "DESPIERTA 2.0",
+                            "DESPIERTA ${BuildConfig.VERSION_NAME}",
                             color = MaterialTheme.colorScheme.primary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
