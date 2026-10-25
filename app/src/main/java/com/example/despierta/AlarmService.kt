@@ -46,7 +46,9 @@ class AlarmService : Service() {
             ACTION_SNOOZE -> {
                 if (currentAlarmId == -1 || currentAlarmId == id) {
                     val alarm = AlarmStore(this).find(id)
-                    val result = alarm?.let { AlarmScheduler(this).snooze(it) }
+                    val result = alarm?.let {
+                        AlarmScheduler(this).snooze(it, it.snoozeMinutes)
+                    }
                     if (result == null || result == ScheduleResult.FAILED) {
                         AlarmLog.error("snooze_failed", "id=$id result=$result")
                         START_REDELIVER_INTENT
@@ -107,11 +109,18 @@ class AlarmService : Service() {
         AlarmWakeLock.releaseAfterServiceLaunch()
         runCatching { requestAudioFocus() }
             .onFailure { AlarmLog.warning("audio_focus_failed", "id=$id", it) }
-        runCatching { startVibration() }
-            .onFailure { AlarmLog.warning("vibration_failed", "id=$id", it) }
+        if (alarm.vibrate) {
+            runCatching { startVibration() }
+                .onFailure { AlarmLog.warning("vibration_failed", "id=$id", it) }
+        } else {
+            AlarmLog.info("vibration_skipped", "id=$id reason=user_disabled")
+        }
         runCatching { startSound(alarm) }
             .onFailure { AlarmLog.error("sound_start_failed", "id=$id", it) }
-        AlarmLog.info("ring_started", "id=$id customSound=${alarm.soundUri.isNotBlank()}")
+        AlarmLog.info(
+            "ring_started",
+            "id=$id customSound=${alarm.soundUri.isNotBlank()} vibrate=${alarm.vibrate}"
+        )
         return START_REDELIVER_INTENT
     }
 
@@ -143,7 +152,11 @@ class AlarmService : Service() {
             .setContentIntent(fullScreen)
             .setFullScreenIntent(fullScreen, true)
             .addAction(
-                Notification.Action.Builder(0, "Posponer 5 min", snooze).build()
+                Notification.Action.Builder(
+                    0,
+                    "Posponer ${alarm.snoozeMinutes} min",
+                    snooze
+                ).build()
             )
             .addAction(
                 Notification.Action.Builder(
@@ -334,10 +347,18 @@ class AlarmService : Service() {
         }
 
         fun isNotificationChannelBlocked(context: Context): Boolean {
+            return notificationChannelImportance(context) == NotificationManager.IMPORTANCE_NONE
+        }
+
+        fun isNotificationChannelDegraded(context: Context): Boolean {
+            return notificationChannelImportance(context) < NotificationManager.IMPORTANCE_HIGH
+        }
+
+        fun notificationChannelImportance(context: Context): Int {
             ensureNotificationChannel(context)
-            val channel = context.getSystemService(NotificationManager::class.java)
+            return context.getSystemService(NotificationManager::class.java)
                 .getNotificationChannel(CHANNEL_ID)
-            return channel?.importance == NotificationManager.IMPORTANCE_NONE
+                ?.importance ?: NotificationManager.IMPORTANCE_NONE
         }
 
         private val ALARM_AUDIO_ATTRIBUTES = AudioAttributes.Builder()

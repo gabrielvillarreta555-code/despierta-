@@ -59,6 +59,10 @@ data class AlarmModel(
     val days: Set<Int> = emptySet(), // Calendar.SUNDAY..SATURDAY
     val shiftPattern: ShiftPattern? = null,
     val soundUri: String = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM).toString(),
+    /** Whether this alarm should vibrate while ringing. Defaults to the pre-2.3 behaviour. */
+    val vibrate: Boolean = true,
+    /** User-selected snooze length. Old records did not contain it and therefore keep 5 minutes. */
+    val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,
     val enabled: Boolean = true,
     val mathChallengeEnabled: Boolean = false,
     val snoozedUntilMillis: Long? = null
@@ -84,11 +88,15 @@ class AlarmStore(context: Context) {
                 Log.e(AlarmLog.TAG, "store_save_rejected id=${alarm.id} reason=invalid_alarm")
                 return
             }
-            val safeAlarm = if (alarm.enabled && alarm.shiftPattern?.isValid == false) {
+            val normalized = alarm.copy(
+                snoozeMinutes = normalizeSnoozeMinutes(alarm.snoozeMinutes),
+                soundUri = alarm.soundUri.ifBlank(::defaultAlarmUri)
+            )
+            val safeAlarm = if (normalized.enabled && normalized.shiftPattern?.isValid == false) {
                 Log.e(AlarmLog.TAG, "store_alarm_disabled id=${alarm.id} reason=invalid_shift")
-                alarm.copy(enabled = false)
+                normalized.copy(enabled = false)
             } else {
-                alarm
+                normalized
             }
             val alarms = current.filterNot { it.id == alarm.id } + safeAlarm
             writeLocked(alarms.sortedWith(compareBy({ it.hour }, { it.minute })))
@@ -176,6 +184,10 @@ class AlarmStore(context: Context) {
             days = days,
             shiftPattern = shiftPattern,
             soundUri = item.optString("soundUri", defaultAlarmUri()),
+            vibrate = item.optBoolean("vibrate", true),
+            snoozeMinutes = normalizeSnoozeMinutes(
+                item.optInt("snoozeMinutes", DEFAULT_SNOOZE_MINUTES)
+            ),
             enabled = enabled,
             mathChallengeEnabled = item.optBoolean("mathChallengeEnabled", false),
             snoozedUntilMillis = if (item.isNull("snoozedUntilMillis")) {
@@ -235,6 +247,8 @@ class AlarmStore(context: Context) {
                     put("shiftPattern", patternObj)
                 } ?: put("shiftPattern", JSONObject.NULL)
                 put("soundUri", alarm.soundUri)
+                put("vibrate", alarm.vibrate)
+                put("snoozeMinutes", normalizeSnoozeMinutes(alarm.snoozeMinutes))
                 put("enabled", alarm.enabled)
                 put("mathChallengeEnabled", alarm.mathChallengeEnabled)
                 put("snoozedUntilMillis", alarm.snoozedUntilMillis ?: JSONObject.NULL)
@@ -258,5 +272,11 @@ class AlarmStore(context: Context) {
 
         fun defaultAlarmUri(): String =
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM).toString()
+
+        fun normalizeSnoozeMinutes(value: Int): Int =
+            value.takeIf(SUPPORTED_SNOOZE_MINUTES::contains) ?: DEFAULT_SNOOZE_MINUTES
     }
 }
+
+internal const val DEFAULT_SNOOZE_MINUTES = 5
+internal val SUPPORTED_SNOOZE_MINUTES = setOf(5, 10, 15)

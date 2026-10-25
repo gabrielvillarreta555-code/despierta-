@@ -21,9 +21,10 @@ cuando sea posible. Programa cada alarma con dos o tres minutos de margen.
    aparecen en `dumpsys alarm` y que cada una se activa una sola vez.
 6. **Repetitiva:** selecciona el día actual y otro día, espera la activación y
    comprueba que la siguiente fecha queda registrada sin duplicados.
-7. **Posponer y detener:** pulsa «Posponer 5 minutos», reinicia opcionalmente
-   durante la espera y confirma la segunda activación. Después pulsa «Detener» y
-   verifica que cesen audio, vibración y notificación.
+7. **Posponer y detener:** repite con 5, 10 y 15 minutos desde la pantalla activa
+   y desde la notificación. Reinicia opcionalmente durante la espera y confirma la
+   segunda activación. Después pulsa «Detener» y verifica que cesen audio,
+   vibración y notificación.
 8. **Desafío matemático:** habilítalo, introduce una respuesta incorrecta y luego
    la correcta. La acción directa de detener no debe eludir el desafío.
 9. **Sonido alternativo:** elige un tono, revoca o invalida su URI si el dispositivo
@@ -47,13 +48,14 @@ En el registro deben aparecer, según el caso: `schedule_exact`, `receiver_fired
 `service_start_failed` o `sound_unavailable` debe conservarse junto con modelo de
 teléfono, versión Android y estado de permisos.
 
-## Cobertura automática de Despierta 2.2
+## Cobertura automática de Despierta 2.3
 
 - Las pruebas JVM verifican ciclos 12×4, 7×7 y personalizados, cambios de mes y
   año, año bisiesto, horario de verano, excepciones y conversiones 12/24 horas.
 - Las pruebas instrumentadas verifican almacenamiento corrupto, identificadores
   duplicados, restauración por arranque/actualización, reemplazo de
-  `PendingIntent`, posponer y entrega exacta con la pantalla del emulador apagada.
+  `PendingIntent`, posposición 5/10/15, continuidad de alarmas repetitivas, entrega
+  exacta con la pantalla del emulador apagada y contraste de la pantalla activa.
 - GitHub Actions ejecuta las pruebas instrumentadas en Android 16 (API 36).
 
 La invocación directa del receptor de arranque comprueba la reprogramación, pero
