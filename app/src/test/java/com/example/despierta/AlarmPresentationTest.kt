@@ -14,8 +14,8 @@ class AlarmPresentationTest {
     @Test
     fun nextAlarmSelectsEarliestEnabledOccurrence() {
         val now = instant(2026, Calendar.OCTOBER, 25, 6, 0)
-        val later = AlarmModel(id = 1, hour = 9, minute = 0, label = "Más tarde")
-        val earlier = AlarmModel(id = 2, hour = 7, minute = 30, label = "Primera")
+        val later = alarm(id = 1, hour = 9, minute = 0, label = "Más tarde")
+        val earlier = alarm(id = 2, hour = 7, minute = 30, label = "Primera")
 
         val next = findNextAlarm(listOf(later, earlier), now, utc)
 
@@ -25,7 +25,7 @@ class AlarmPresentationTest {
 
     @Test
     fun disabledAlarmWithoutSnoozeHasNoOccurrence() {
-        val alarm = AlarmModel(id = 3, hour = 7, minute = 0, enabled = false)
+        val alarm = alarm(id = 3, hour = 7, minute = 0, enabled = false)
 
         assertNull(nextOccurrenceMillis(alarm, instant(2026, Calendar.OCTOBER, 25, 6, 0), utc))
     }
@@ -49,7 +49,7 @@ class AlarmPresentationTest {
     @Test
     fun upcomingShiftListCrossesACompleteTwelveByFourCycle() {
         val pattern = ShiftPattern.from(LocalDate.of(2026, 10, 1), 12, 4)
-        val alarm = AlarmModel(id = 4, hour = 7, minute = 0, shiftPattern = pattern)
+        val alarm = alarm(id = 4, hour = 7, minute = 0, shiftPattern = pattern)
         val now = instant(2026, Calendar.OCTOBER, 12, 8, 0)
 
         val upcoming = upcomingShiftOccurrences(alarm, 2, now, utc)
@@ -75,4 +75,21 @@ class AlarmPresentationTest {
             clear()
             set(year, month, day, hour, minute, 0)
         }.timeInMillis
+
+    private fun alarm(
+        id: Int,
+        hour: Int,
+        minute: Int,
+        label: String = "Prueba",
+        enabled: Boolean = true,
+        shiftPattern: ShiftPattern? = null
+    ) = AlarmModel(
+        id = id,
+        hour = hour,
+        minute = minute,
+        label = label,
+        shiftPattern = shiftPattern,
+        soundUri = "content://test/alarm",
+        enabled = enabled
+    )
 }

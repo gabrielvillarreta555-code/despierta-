@@ -42,7 +42,9 @@ jobs:
           aapt_path="$ANDROID_HOME/build-tools/36.0.0/aapt"
           "$aapt_path" dump badging "$release_dir/Despierta-2.1.apk" | tee "$release_dir/manifest-badging.txt"
           grep -q "versionCode='4' versionName='2.1'" "$release_dir/manifest-badging.txt"
-          unzip -p "$release_dir/Despierta-2.1.apk" classes.dex | strings | grep -Fq "${commit_sha:0:12}"
+          unzip -p "$release_dir/Despierta-2.1.apk" classes.dex > "$RUNNER_TEMP/despierta-classes.dex"
+          strings "$RUNNER_TEMP/despierta-classes.dex" > "$RUNNER_TEMP/despierta-classes.txt"
+          grep -Fq "${commit_sha:0:12}" "$RUNNER_TEMP/despierta-classes.txt"
           {
             echo "commit=$commit_sha"
             echo "versionName=2.1"
