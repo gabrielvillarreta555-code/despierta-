@@ -80,6 +80,9 @@ jobs:
       - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Compilar APK y pruebas instrumentadas
+        run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
+
       - name: Pruebas en Android 16
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
@@ -90,10 +93,9 @@ jobs:
           disable-animations: true
           script: |
             mkdir -p app/build/outputs/androidTest-results/diagnostics
-            ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
             bash .github/scripts/wait-for-android.sh app/build/outputs/androidTest-results/diagnostics/emulator-readiness.txt
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            bash .github/scripts/install-apk-with-retry.sh app/build/outputs/apk/debug/app-debug.apk app/build/outputs/androidTest-results/diagnostics/app-install.txt
+            bash .github/scripts/install-apk-with-retry.sh app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk app/build/outputs/androidTest-results/diagnostics/test-install.txt
             adb shell cmd package compile -m speed -f com.example.despierta
             adb shell cmd package compile -m speed -f com.example.despierta.test
             adb logcat -c
