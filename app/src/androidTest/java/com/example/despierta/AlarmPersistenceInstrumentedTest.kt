@@ -78,6 +78,29 @@ class AlarmPersistenceInstrumentedTest {
     }
 
     @Test
+    fun scheduleRegistryRejectsOldAndDuplicateDeliveries() {
+        val alarm = store.newAlarm().copy(
+            enabled = false,
+            snoozedUntilMillis = System.currentTimeMillis() + 120_000L
+        )
+        createdIds += alarm.id
+        store.save(alarm)
+        val scheduler = AlarmScheduler(context)
+        scheduler.schedule(alarm)
+        val registry = AlarmScheduleRegistry(context)
+        val firstTrigger = requireNotNull(registry.expectedTrigger(alarm.id))
+
+        val updated = alarm.copy(snoozedUntilMillis = firstTrigger + 60_000L)
+        store.save(updated)
+        scheduler.schedule(updated)
+        val latestTrigger = requireNotNull(registry.expectedTrigger(alarm.id))
+
+        assertFalse(registry.claim(alarm.id, firstTrigger))
+        assertTrue(registry.claim(alarm.id, latestTrigger))
+        assertFalse(registry.claim(alarm.id, latestTrigger))
+    }
+
+    @Test
     fun bootReceiverRestoresEnabledAlarmWithoutDuplicates() {
         val alarm = store.newAlarm().copy(
             enabled = true,
@@ -91,6 +114,28 @@ class AlarmPersistenceInstrumentedTest {
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
 
+        assertTrue(scheduler.hasPendingIntent(alarm.id))
+    }
+
+    @Test
+    fun exactAlarmPermissionGrantAndPackageUpdateReconcileStoredAlarm() {
+        val alarm = store.newAlarm().copy(
+            enabled = true,
+            shiftPattern = ShiftPattern.from(LocalDate.now(), 12, 4)
+        )
+        createdIds += alarm.id
+        store.save(alarm)
+        val scheduler = AlarmScheduler(context)
+
+        scheduler.cancel(alarm.id)
+        BootReceiver().onReceive(
+            context,
+            Intent(android.app.AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED)
+        )
+        assertTrue(scheduler.hasPendingIntent(alarm.id))
+
+        scheduler.cancel(alarm.id)
+        BootReceiver().onReceive(context, Intent(Intent.ACTION_MY_PACKAGE_REPLACED))
         assertTrue(scheduler.hasPendingIntent(alarm.id))
     }
 
@@ -137,6 +182,29 @@ class AlarmPersistenceInstrumentedTest {
         val restored = store.getAll()
 
         assertEquals(setOf(first.id, second.id), restored.map { it.id }.toSet())
+    }
+
+    @Test
+    fun duplicateStoredIdKeepsOnlyLatestAlarm() {
+        val id = 8123
+        val first = JSONObject()
+            .put("id", id)
+            .put("hour", 6)
+            .put("minute", 0)
+            .put("label", "Antigua")
+            .put("days", JSONArray())
+            .put("enabled", true)
+        val latest = JSONObject(first.toString())
+            .put("hour", 8)
+            .put("label", "Actual")
+        prefs.edit().putString("items", JSONArray().put(first).put(latest).toString()).commit()
+        createdIds += id
+
+        val restored = store.getAll().filter { it.id == id }
+
+        assertEquals(1, restored.size)
+        assertEquals("Actual", restored.single().label)
+        assertEquals(8, restored.single().hour)
     }
 
     @Test

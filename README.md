@@ -12,6 +12,9 @@ sistema, vibración, posponer, detener y desafío matemático opcional.
   requiere declarar y justificar ese uso.
 - Android 12/12L: `SCHEDULE_EXACT_ALARM` y acceso especial solicitado desde la
   aplicación.
+- Despierta 2.2 añade un selector vertical de horas y minutos con ajuste al
+  valor más cercano, formato 12/24 horas, entrada manual y respuesta háptica
+  opcional.
 - Android 13+: permiso de notificaciones.
 - Android 14+: acceso de pantalla completa. Si no se concede, Android puede
   mostrar una notificación emergente en vez de abrir la pantalla de alarma.
@@ -23,7 +26,7 @@ puede hacer sonar una alarma con el teléfono completamente apagado.
 
 ## Instalar el APK de prueba
 
-1. Descarga `app-debug.apk` desde el artefacto **Despierta-APK** de la última
+1. Descarga `Despierta-2.2.apk` desde el artefacto **Despierta-2.2** de la última
    ejecución de **Actions > Generar APK**, o compílalo con `./gradlew assembleDebug`.
 2. En el teléfono, permite temporalmente instalar aplicaciones desconocidas para
    el navegador o gestor de archivos usado para abrir el APK.
