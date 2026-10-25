@@ -32,35 +32,46 @@ jobs:
       - name: Pruebas unitarias y análisis
         run: ./gradlew testDebugUnitTest lintDebug --stacktrace
 
-      - name: Compilar APK instalable
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Compilar APK y AAB
+        run: ./gradlew assembleDebug bundleRelease --stacktrace
 
-      - name: Preparar y verificar Despierta 2.3
+      - name: Preparar y verificar Despierta 2.4
         shell: bash
         run: |
           set -euo pipefail
-          release_dir="app/build/outputs/despierta-2.3"
+          release_dir="app/build/outputs/despierta-2.4"
           mkdir -p "$release_dir"
-          cp app/build/outputs/apk/debug/app-debug.apk "$release_dir/Despierta-2.3.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$release_dir/Despierta-2.4.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "$release_dir/Despierta-2.4-unsigned.aab"
           commit_sha="$(git rev-parse HEAD)"
           aapt_path="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          "$aapt_path" dump badging "$release_dir/Despierta-2.3.apk" | tee "$release_dir/manifest-badging.txt"
-          grep -q "versionCode='6' versionName='2.3'" "$release_dir/manifest-badging.txt"
-          unzip -p "$release_dir/Despierta-2.3.apk" 'classes*.dex' > "$RUNNER_TEMP/despierta-classes.dex"
+          "$aapt_path" dump badging "$release_dir/Despierta-2.4.apk" | tee "$release_dir/manifest-badging.txt"
+          grep -q "versionCode='7' versionName='2.4'" "$release_dir/manifest-badging.txt"
+          unzip -p "$release_dir/Despierta-2.4.apk" 'classes*.dex' > "$RUNNER_TEMP/despierta-classes.dex"
           strings "$RUNNER_TEMP/despierta-classes.dex" > "$RUNNER_TEMP/despierta-classes.txt"
           grep -Fq "${commit_sha:0:12}" "$RUNNER_TEMP/despierta-classes.txt"
+          unzip -p "$release_dir/Despierta-2.4-unsigned.aab" 'base/dex/classes*.dex' > "$RUNNER_TEMP/despierta-bundle-classes.dex"
+          strings "$RUNNER_TEMP/despierta-bundle-classes.dex" > "$RUNNER_TEMP/despierta-bundle-classes.txt"
+          grep -Fq "${commit_sha:0:12}" "$RUNNER_TEMP/despierta-bundle-classes.txt"
+          LANG=C jarsigner -verify "$release_dir/Despierta-2.4-unsigned.aab" > "$release_dir/AAB-SIGNING.txt" 2>&1 || true
+          if grep -q "jar verified" "$release_dir/AAB-SIGNING.txt"; then
+            echo "AAB firmado: requiere comprobar que el certificado corresponda a la clave de carga de Google Play." >> "$release_dir/AAB-SIGNING.txt"
+          else
+            echo "AAB sin firma de publicación: debe firmarse con la clave de carga antes de enviarlo a Google Play." >> "$release_dir/AAB-SIGNING.txt"
+          fi
           {
             echo "commit=$commit_sha"
-            echo "versionName=2.3"
-            echo "versionCode=6"
-            sha256sum "$release_dir/Despierta-2.3.apk"
+            echo "versionName=2.4"
+            echo "versionCode=7"
+            sha256sum "$release_dir/Despierta-2.4.apk"
+            sha256sum "$release_dir/Despierta-2.4-unsigned.aab"
           } > "$release_dir/BUILD-INFO.txt"
 
-      - name: Publicar APK
+      - name: Publicar APK y AAB
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-2.3
-          path: app/build/outputs/despierta-2.3/
+          name: Despierta-2.4
+          path: app/build/outputs/despierta-2.4/
           if-no-files-found: error
           retention-days: 14
 
@@ -114,34 +125,34 @@ jobs:
             cat app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
             grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
             cat app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt > app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
-            adb exec-out run-as com.example.despierta cat files/Despierta-2.3-Alarma-activa.png > app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Alarma-activa.png
-            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Alarma-activa.png
+            adb exec-out run-as com.example.despierta cat files/Despierta-2.4-Alarma-activa.png > app/build/outputs/androidTest-results/diagnostics/Despierta-2.4-Alarma-activa.png
+            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.4-Alarma-activa.png
             adb shell pm grant com.example.despierta android.permission.POST_NOTIFICATIONS || true
             adb shell am force-stop com.example.despierta
             adb shell am start -W -n com.example.despierta/.MainActivity
             sleep 3
-            adb exec-out screencap -p > app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Inicio.png
-            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Inicio.png
+            adb exec-out screencap -p > app/build/outputs/androidTest-results/diagnostics/Despierta-2.4-Inicio.png
+            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.4-Inicio.png
             adb logcat -d -v threadtime > app/build/outputs/androidTest-results/diagnostics/logcat.txt || true
 
       - name: Publicar informes instrumentados
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-2.3-Pruebas-Android16
+          name: Despierta-2.4-Pruebas-Android16
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Publicar capturas reales Despierta 2.3
+      - name: Publicar capturas reales Despierta 2.4
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-2.3-Capturas
+          name: Despierta-2.4-Capturas
           path: |
-            app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Alarma-activa.png
-            app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Inicio.png
+            app/build/outputs/androidTest-results/diagnostics/Despierta-2.4-Alarma-activa.png
+            app/build/outputs/androidTest-results/diagnostics/Despierta-2.4-Inicio.png
           if-no-files-found: warn
           retention-days: 14

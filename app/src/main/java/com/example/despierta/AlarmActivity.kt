@@ -104,10 +104,10 @@ class AlarmActivity : ComponentActivity() {
 
         MaterialTheme(
             colorScheme = darkColorScheme(
-                primary = Color(0xFFFFB66D),
-                onPrimary = Color(0xFF2C1704),
-                background = Color(0xFF0C0E12),
-                surface = Color(0xFF171A20),
+                primary = Color(0xFF82B1FF),
+                onPrimary = Color(0xFF001B3D),
+                background = Color(0xFF070B19),
+                surface = Color(0xFF101524),
                 onSurface = Color(0xFFF4F1EB),
                 onSurfaceVariant = Color(0xFFAAAEB7)
             )
@@ -117,7 +117,7 @@ class AlarmActivity : ComponentActivity() {
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xFF0C0E12), Color(0xFF241A12))
+                            listOf(Color(0xFF070B19), Color(0xFF141933))
                         )
                     )
             ) {

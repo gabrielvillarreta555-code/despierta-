@@ -3,6 +3,8 @@ package com.example.despierta
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -86,7 +88,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -107,7 +108,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -156,11 +156,17 @@ internal fun DespiertaApp(
     onRequestAlarmChannel: () -> Unit
 ) {
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowMillis = System.currentTimeMillis()
-            delay((1_000L - nowMillis % 1_000L).coerceAtLeast(100L))
+    DisposableEffect(Unit) {
+        val handler = Handler(Looper.getMainLooper())
+        val ticker = object : Runnable {
+            override fun run() {
+                nowMillis = System.currentTimeMillis()
+                val nextTick = (1_000L - nowMillis % 1_000L).coerceAtLeast(100L)
+                handler.postDelayed(this, nextTick)
+            }
         }
+        handler.post(ticker)
+        onDispose { handler.removeCallbacks(ticker) }
     }
 
     Scaffold(
