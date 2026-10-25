@@ -98,36 +98,21 @@ jobs:
             adb shell cmd package compile -m speed -f com.example.despierta.test
             adb logcat -c
             adb shell am force-stop com.example.despierta || true
-            adb shell am instrument -w -r \
-              -e class com.example.despierta.AlarmPersistenceInstrumentedTest,com.example.despierta.AlarmDeliveryInstrumentedTest \
-              com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner \
-              > app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt 2>&1 || true
+            adb shell am instrument -w -r -e class com.example.despierta.AlarmPersistenceInstrumentedTest,com.example.despierta.AlarmDeliveryInstrumentedTest com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt 2>&1 || true
             cat app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt
             grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt
             adb shell am force-stop com.example.despierta || true
-            adb shell am instrument -w -r \
-              -e class com.example.despierta.DespiertaUiInstrumentedTest \
-              com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner \
-              > app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt 2>&1 || true
+            adb shell am instrument -w -r -e class com.example.despierta.DespiertaUiInstrumentedTest com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt 2>&1 || true
             cat app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt
             grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt
             adb shell settings put system font_scale 1.30
             adb shell am force-stop com.example.despierta || true
-            adb shell am instrument -w -r \
-              -e class com.example.despierta.AlarmScreenInstrumentedTest \
-              com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner \
-              > app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt 2>&1 || true
+            adb shell am instrument -w -r -e class com.example.despierta.AlarmScreenInstrumentedTest com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt 2>&1 || true
             adb shell settings put system font_scale 1.0 || true
             cat app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
             grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
-            cat \
-              app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt \
-              app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt \
-              app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt \
-              > app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
-            adb exec-out run-as com.example.despierta \
-              cat files/Despierta-2.3-Alarma-activa.png \
-              > app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Alarma-activa.png
+            cat app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt > app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
+            adb exec-out run-as com.example.despierta cat files/Despierta-2.3-Alarma-activa.png > app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Alarma-activa.png
             test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.3-Alarma-activa.png
             adb shell pm grant com.example.despierta android.permission.POST_NOTIFICATIONS || true
             adb shell am force-stop com.example.despierta
