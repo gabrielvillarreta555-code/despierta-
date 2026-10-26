@@ -143,6 +143,7 @@ internal fun DespiertaApp(
     section: AppSection,
     permissionState: PermissionUiState,
     hapticsEnabled: Boolean,
+    liveClockUpdates: Boolean = true,
     snackbarHostState: SnackbarHostState,
     onSectionSelected: (AppSection) -> Unit,
     onAddAlarm: () -> Unit,
@@ -157,7 +158,11 @@ internal fun DespiertaApp(
     onRequestAlarmChannel: () -> Unit
 ) {
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    DisposableEffect(Unit) {
+    DisposableEffect(liveClockUpdates) {
+        if (!liveClockUpdates) {
+            nowMillis = System.currentTimeMillis()
+            return@DisposableEffect onDispose { }
+        }
         val handler = Handler(Looper.getMainLooper())
         val ticker = object : Runnable {
             override fun run() {
