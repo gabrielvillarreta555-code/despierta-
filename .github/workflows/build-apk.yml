@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -27,14 +32,46 @@ jobs:
       - name: Pruebas unitarias y análisis
         run: ./gradlew testDebugUnitTest lintDebug --stacktrace
 
-      - name: Compilar APK instalable
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Compilar APK y AAB
+        run: ./gradlew assembleDebug bundleRelease --stacktrace
 
-      - name: Publicar APK
+      - name: Preparar y verificar Despierta 2.5
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="app/build/outputs/despierta-2.5"
+          mkdir -p "$release_dir"
+          cp app/build/outputs/apk/debug/app-debug.apk "$release_dir/Despierta-2.5.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "$release_dir/Despierta-2.5-unsigned.aab"
+          commit_sha="$(git rev-parse HEAD)"
+          aapt_path="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$aapt_path" dump badging "$release_dir/Despierta-2.5.apk" | tee "$release_dir/manifest-badging.txt"
+          grep -q "versionCode='8' versionName='2.5'" "$release_dir/manifest-badging.txt"
+          unzip -p "$release_dir/Despierta-2.5.apk" 'classes*.dex' > "$RUNNER_TEMP/despierta-classes.dex"
+          strings "$RUNNER_TEMP/despierta-classes.dex" > "$RUNNER_TEMP/despierta-classes.txt"
+          grep -Fq "${commit_sha:0:12}" "$RUNNER_TEMP/despierta-classes.txt"
+          unzip -p "$release_dir/Despierta-2.5-unsigned.aab" 'base/dex/classes*.dex' > "$RUNNER_TEMP/despierta-bundle-classes.dex"
+          strings "$RUNNER_TEMP/despierta-bundle-classes.dex" > "$RUNNER_TEMP/despierta-bundle-classes.txt"
+          grep -Fq "${commit_sha:0:12}" "$RUNNER_TEMP/despierta-bundle-classes.txt"
+          LANG=C jarsigner -verify "$release_dir/Despierta-2.5-unsigned.aab" > "$release_dir/AAB-SIGNING.txt" 2>&1 || true
+          if grep -q "jar verified" "$release_dir/AAB-SIGNING.txt"; then
+            echo "AAB firmado: requiere comprobar que el certificado corresponda a la clave de carga de Google Play." >> "$release_dir/AAB-SIGNING.txt"
+          else
+            echo "AAB sin firma de publicación: debe firmarse con la clave de carga antes de enviarlo a Google Play." >> "$release_dir/AAB-SIGNING.txt"
+          fi
+          {
+            echo "commit=$commit_sha"
+            echo "versionName=2.5"
+            echo "versionCode=8"
+            sha256sum "$release_dir/Despierta-2.5.apk"
+            sha256sum "$release_dir/Despierta-2.5-unsigned.aab"
+          } > "$release_dir/BUILD-INFO.txt"
+
+      - name: Publicar APK y AAB
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Despierta-2.5
+          path: app/build/outputs/despierta-2.5/
           if-no-files-found: error
           retention-days: 14
 
@@ -54,6 +91,9 @@ jobs:
       - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Compilar APK y pruebas instrumentadas
+        run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
+
       - name: Pruebas en Android 16
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
@@ -64,25 +104,55 @@ jobs:
           disable-animations: true
           script: |
             mkdir -p app/build/outputs/androidTest-results/diagnostics
-            ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            bash .github/scripts/wait-for-android.sh app/build/outputs/androidTest-results/diagnostics/emulator-readiness.txt
+            bash .github/scripts/install-apk-with-retry.sh app/build/outputs/apk/debug/app-debug.apk app/build/outputs/androidTest-results/diagnostics/app-install.txt
+            bash .github/scripts/install-apk-with-retry.sh app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk app/build/outputs/androidTest-results/diagnostics/test-install.txt
             adb shell cmd package compile -m speed -f com.example.despierta
             adb shell cmd package compile -m speed -f com.example.despierta.test
-            sleep 20
             adb logcat -c
-            adb shell am instrument -w -r com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/instrumentation.txt 2>&1 || true
-            cat app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
+            adb shell am force-stop com.example.despierta || true
+            adb shell am instrument -w -r -e class com.example.despierta.AlarmPersistenceInstrumentedTest,com.example.despierta.AlarmDeliveryInstrumentedTest com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt 2>&1 || true
+            cat app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt
+            grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt
+            adb shell am force-stop com.example.despierta || true
+            adb shell am instrument -w -r -e class com.example.despierta.DespiertaUiInstrumentedTest com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt 2>&1 || true
+            cat app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt
+            grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt
+            adb shell settings put system font_scale 1.30
+            adb shell am force-stop com.example.despierta || true
+            adb shell am instrument -w -r -e class com.example.despierta.AlarmScreenInstrumentedTest com.example.despierta.test/androidx.test.runner.AndroidJUnitRunner > app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt 2>&1 || true
+            adb shell settings put system font_scale 1.0 || true
+            cat app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
+            grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt
+            cat app/build/outputs/androidTest-results/diagnostics/core-instrumentation.txt app/build/outputs/androidTest-results/diagnostics/ui-instrumentation.txt app/build/outputs/androidTest-results/diagnostics/alarm-screen-instrumentation.txt > app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
+            adb exec-out run-as com.example.despierta cat files/Despierta-2.5-Alarma-activa.png > app/build/outputs/androidTest-results/diagnostics/Despierta-2.5-Alarma-activa.png
+            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.5-Alarma-activa.png
+            adb shell pm grant com.example.despierta android.permission.POST_NOTIFICATIONS || true
+            adb shell am force-stop com.example.despierta
+            adb shell am start -W -n com.example.despierta/.MainActivity
+            sleep 3
+            adb exec-out screencap -p > app/build/outputs/androidTest-results/diagnostics/Despierta-2.5-Inicio.png
+            test -s app/build/outputs/androidTest-results/diagnostics/Despierta-2.5-Inicio.png
             adb logcat -d -v threadtime > app/build/outputs/androidTest-results/diagnostics/logcat.txt || true
-            grep -q '^OK (' app/build/outputs/androidTest-results/diagnostics/instrumentation.txt
 
       - name: Publicar informes instrumentados
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Despierta-Pruebas-Android16
+          name: Despierta-2.5-Pruebas-Android16
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publicar capturas reales Despierta 2.5
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Despierta-2.5-Capturas
+          path: |
+            app/build/outputs/androidTest-results/diagnostics/Despierta-2.5-Alarma-activa.png
+            app/build/outputs/androidTest-results/diagnostics/Despierta-2.5-Inicio.png
           if-no-files-found: warn
           retention-days: 14

@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
@@ -26,10 +27,11 @@ class AlarmService : Service() {
     private var vibrator: Vibrator? = null
     private var audioFocusRequest: AudioFocusRequest? = null
     private var currentAlarmId: Int = -1
+    private var currentTriggerToken: Long = Long.MIN_VALUE
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
+        ensureNotificationChannel(this)
         AlarmLog.info("service_created", "sdk=${Build.VERSION.SDK_INT}")
     }
 
@@ -43,14 +45,25 @@ class AlarmService : Service() {
 
             ACTION_SNOOZE -> {
                 if (currentAlarmId == -1 || currentAlarmId == id) {
-                    AlarmStore(this).find(id)?.let { AlarmScheduler(this).snooze(it) }
-                    stopAlarm("user_snooze")
+                    val alarm = AlarmStore(this).find(id)
+                    val result = alarm?.let {
+                        AlarmScheduler(this).snooze(it, it.snoozeMinutes)
+                    }
+                    if (result == null || result == ScheduleResult.FAILED) {
+                        AlarmLog.error("snooze_failed", "id=$id result=$result")
+                        START_REDELIVER_INTENT
+                    } else {
+                        stopAlarm("user_snooze")
+                    }
                 } else {
                     START_REDELIVER_INTENT
                 }
             }
 
-            ACTION_RING -> startRinging(id)
+            ACTION_RING -> startRinging(
+                id,
+                intent.getLongExtra(AlarmScheduler.EXTRA_EXPECTED_TRIGGER_AT, 0L)
+            )
             else -> {
                 AlarmLog.warning("service_unknown_intent", "action=${intent?.action} id=$id")
                 stopAlarm("unknown_intent")
@@ -58,31 +71,56 @@ class AlarmService : Service() {
         }
     }
 
-    private fun startRinging(id: Int): Int {
+    private fun startRinging(id: Int, triggerToken: Long): Int {
         val alarm = AlarmStore(this).find(id)
         if (id <= 0 || alarm == null) {
             AlarmLog.warning("ring_ignored", "id=$id reason=missing_alarm")
             return stopAlarm("missing_alarm")
         }
 
-        if (currentAlarmId != -1) releaseResources()
-        currentAlarmId = id
-        val notification = notification(alarm)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        if (currentAlarmId == id && currentTriggerToken == triggerToken) {
+            AlarmWakeLock.releaseAfterServiceLaunch()
+            AlarmLog.warning("ring_ignored", "id=$id reason=duplicate_delivery")
+            return START_REDELIVER_INTENT
         }
 
-        acquireWakeLock()
-        requestAudioFocus()
-        startVibration()
-        startSound(alarm)
-        AlarmLog.info("ring_started", "id=$id customSound=${alarm.soundUri.isNotBlank()}")
+        if (currentAlarmId != -1) releaseResources()
+        currentAlarmId = id
+        currentTriggerToken = triggerToken
+        val notification = notification(alarm)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (error: RuntimeException) {
+            AlarmWakeLock.releaseAfterServiceLaunch()
+            AlarmLog.error("foreground_start_failed", "id=$id", error)
+            return stopAlarm("foreground_start_failed")
+        }
+
+        runCatching { acquireWakeLock() }
+            .onFailure { AlarmLog.warning("ring_wakelock_failed", "id=$id", it) }
+        AlarmWakeLock.releaseAfterServiceLaunch()
+        runCatching { requestAudioFocus() }
+            .onFailure { AlarmLog.warning("audio_focus_failed", "id=$id", it) }
+        if (alarm.vibrate) {
+            runCatching { startVibration() }
+                .onFailure { AlarmLog.warning("vibration_failed", "id=$id", it) }
+        } else {
+            AlarmLog.info("vibration_skipped", "id=$id reason=user_disabled")
+        }
+        runCatching { startSound(alarm) }
+            .onFailure { AlarmLog.error("sound_start_failed", "id=$id", it) }
+        AlarmLog.info(
+            "ring_started",
+            "id=$id customSound=${alarm.soundUri.isNotBlank()} vibrate=${alarm.vibrate}"
+        )
         return START_REDELIVER_INTENT
     }
 
@@ -114,7 +152,11 @@ class AlarmService : Service() {
             .setContentIntent(fullScreen)
             .setFullScreenIntent(fullScreen, true)
             .addAction(
-                Notification.Action.Builder(0, "Posponer 5 min", snooze).build()
+                Notification.Action.Builder(
+                    0,
+                    "Posponer ${alarm.snoozeMinutes} min",
+                    snooze
+                ).build()
             )
             .addAction(
                 Notification.Action.Builder(
@@ -159,6 +201,16 @@ class AlarmService : Service() {
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         ).distinctBy(Uri::toString)
+
+        val audioManager = getSystemService(AudioManager::class.java)
+        val alarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+        val alarmVolumeMax = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        if (alarmVolume == 0) {
+            // Respect the user's volume choice. Vibration and the visible controls remain active.
+            AlarmLog.warning("alarm_volume_muted", "id=${alarm.id} max=$alarmVolumeMax")
+        } else {
+            AlarmLog.info("alarm_volume", "id=${alarm.id} current=$alarmVolume max=$alarmVolumeMax")
+        }
 
         for (sound in candidates) {
             val candidate = MediaPlayer()
@@ -227,41 +279,43 @@ class AlarmService : Service() {
         AlarmLog.info("ring_stopped", "id=$currentAlarmId reason=$reason")
         releaseResources()
         currentAlarmId = -1
+        currentTriggerToken = Long.MIN_VALUE
+        AlarmWakeLock.releaseAfterServiceLaunch()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         return START_NOT_STICKY
     }
 
     private fun releaseResources() {
-        player?.runCatching { stop() }
-        player?.release()
+        val activePlayer = player
         player = null
-        vibrator?.cancel()
+        activePlayer?.let { mediaPlayer ->
+            runCatching { mediaPlayer.stop() }
+            runCatching { mediaPlayer.release() }
+                .onFailure { AlarmLog.warning("sound_release_failed", "id=$currentAlarmId", it) }
+        }
+        val activeVibrator = vibrator
         vibrator = null
-        audioFocusRequest?.let { request ->
-            getSystemService(AudioManager::class.java).abandonAudioFocusRequest(request)
-        }
+        runCatching { activeVibrator?.cancel() }
+            .onFailure { AlarmLog.warning("vibration_stop_failed", "id=$currentAlarmId", it) }
+        val focusRequest = audioFocusRequest
         audioFocusRequest = null
-        wakeLock?.takeIf { it.isHeld }?.release()
-        wakeLock = null
-    }
-
-    private fun createChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Alarmas activas",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Alarmas de Despierta que están sonando"
-            setSound(null, null)
-            enableVibration(false) // The foreground service owns the repeating vibration.
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        focusRequest?.let { request ->
+            runCatching {
+                getSystemService(AudioManager::class.java).abandonAudioFocusRequest(request)
+            }.onFailure {
+                AlarmLog.warning("audio_focus_release_failed", "id=$currentAlarmId", it)
+            }
         }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val activeWakeLock = wakeLock
+        wakeLock = null
+        runCatching { activeWakeLock?.takeIf { it.isHeld }?.release() }
+            .onFailure { AlarmLog.warning("ring_wakelock_release_failed", "id=$currentAlarmId", it) }
     }
 
     override fun onDestroy() {
         releaseResources()
+        AlarmWakeLock.releaseAfterServiceLaunch()
         AlarmLog.info("service_destroyed", "id=$currentAlarmId")
         super.onDestroy()
     }
@@ -274,8 +328,38 @@ class AlarmService : Service() {
         const val ACTION_STOP = "com.example.despierta.action.STOP"
         const val ACTION_SNOOZE = "com.example.despierta.action.SNOOZE"
         private const val ACTION_OPEN = "com.example.despierta.action.OPEN_ALARM"
-        private const val NOTIFICATION_ID = 41_001
+        internal const val NOTIFICATION_ID = 41_001
         private const val WAKE_LOCK_TIMEOUT_MILLIS = 15 * 60_000L
+
+        fun ensureNotificationChannel(context: Context) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Alarmas activas",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alarmas de Despierta que están sonando"
+                setSound(null, null)
+                enableVibration(false) // The foreground service owns the repeating vibration.
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            context.getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
+        }
+
+        fun isNotificationChannelBlocked(context: Context): Boolean {
+            return notificationChannelImportance(context) == NotificationManager.IMPORTANCE_NONE
+        }
+
+        fun isNotificationChannelDegraded(context: Context): Boolean {
+            return notificationChannelImportance(context) < NotificationManager.IMPORTANCE_HIGH
+        }
+
+        fun notificationChannelImportance(context: Context): Int {
+            ensureNotificationChannel(context)
+            return context.getSystemService(NotificationManager::class.java)
+                .getNotificationChannel(CHANNEL_ID)
+                ?.importance ?: NotificationManager.IMPORTANCE_NONE
+        }
 
         private val ALARM_AUDIO_ATTRIBUTES = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
