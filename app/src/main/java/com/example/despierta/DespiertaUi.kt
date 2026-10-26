@@ -13,6 +13,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -98,7 +99,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -175,70 +179,147 @@ internal fun DespiertaApp(
         onDispose { handler.removeCallbacks(ticker) }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = { BrandBar() },
-        bottomBar = {
-            AppNavigation(
-                selected = section,
-                permissionCount = permissionState.pendingCount,
-                onSelected = onSectionSelected
-            )
-        },
-        floatingActionButton = {
-            if (section != AppSection.SETTINGS) {
-                ExtendedFloatingActionButton(
-                    onClick = if (section == AppSection.SHIFTS) onAddShiftAlarm else onAddAlarm,
-                    icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                    text = { Text(if (section == AppSection.SHIFTS) "Nuevo turno" else "Nueva alarma") },
-                    modifier = Modifier.testTag("add_alarm")
+    Box(Modifier.fillMaxSize()) {
+        NightLandscapeBackground()
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = { BrandBar() },
+            bottomBar = {
+                AppNavigation(
+                    selected = section,
+                    permissionCount = permissionState.pendingCount,
+                    onSelected = onSectionSelected
                 )
+            },
+            floatingActionButton = {
+                if (section != AppSection.SETTINGS) {
+                    ExtendedFloatingActionButton(
+                        onClick = if (section == AppSection.SHIFTS) onAddShiftAlarm else onAddAlarm,
+                        icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                        text = { Text(if (section == AppSection.SHIFTS) "Nuevo turno" else "Nueva alarma") },
+                        modifier = Modifier.testTag("add_alarm")
+                    )
+                }
             }
-        }
-    ) { innerPadding ->
-        Crossfade(
-            targetState = section,
-            animationSpec = tween(180),
-            label = "section",
-            modifier = Modifier.fillMaxSize().padding(innerPadding)
-        ) { selected ->
-            when (selected) {
-                AppSection.ALARMS -> AlarmHome(
-                    alarms = alarms,
-                    nowMillis = nowMillis,
-                    onAddAlarm = onAddAlarm,
-                    onEditAlarm = onEditAlarm,
-                    onToggleAlarm = onToggleAlarm,
-                    onDeleteAlarm = onDeleteAlarm
-                )
+        ) { innerPadding ->
+            Crossfade(
+                targetState = section,
+                animationSpec = tween(180),
+                label = "section",
+                modifier = Modifier.fillMaxSize().padding(innerPadding)
+            ) { selected ->
+                when (selected) {
+                    AppSection.ALARMS -> AlarmHome(
+                        alarms = alarms,
+                        nowMillis = nowMillis,
+                        onAddAlarm = onAddAlarm,
+                        onEditAlarm = onEditAlarm,
+                        onToggleAlarm = onToggleAlarm,
+                        onDeleteAlarm = onDeleteAlarm
+                    )
 
-                AppSection.SHIFTS -> ShiftScreen(
-                    alarms = alarms,
-                    nowMillis = nowMillis,
-                    onAddShiftAlarm = onAddShiftAlarm,
-                    onEditAlarm = onEditAlarm,
-                    onToggleAlarm = onToggleAlarm
-                )
+                    AppSection.SHIFTS -> ShiftScreen(
+                        alarms = alarms,
+                        nowMillis = nowMillis,
+                        onAddShiftAlarm = onAddShiftAlarm,
+                        onEditAlarm = onEditAlarm,
+                        onToggleAlarm = onToggleAlarm
+                    )
 
-                AppSection.SETTINGS -> SettingsScreen(
-                    permissionState = permissionState,
-                    hapticsEnabled = hapticsEnabled,
-                    onHapticsChanged = onHapticsChanged,
-                    onRequestExactAlarm = onRequestExactAlarm,
-                    onRequestNotifications = onRequestNotifications,
-                    onRequestFullScreen = onRequestFullScreen,
-                    onRequestAlarmChannel = onRequestAlarmChannel
-                )
+                    AppSection.SETTINGS -> SettingsScreen(
+                        permissionState = permissionState,
+                        hapticsEnabled = hapticsEnabled,
+                        onHapticsChanged = onHapticsChanged,
+                        onRequestExactAlarm = onRequestExactAlarm,
+                        onRequestNotifications = onRequestNotifications,
+                        onRequestFullScreen = onRequestFullScreen,
+                        onRequestAlarmChannel = onRequestAlarmChannel
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
+private fun NightLandscapeBackground() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val width = size.width
+        val height = size.height
+
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF040614),
+                    Color(0xFF0D122B),
+                    Color(0xFF1B1F3C)
+                )
+            )
+        )
+
+        drawCircle(
+            color = Color(0xFFFFECCC),
+            radius = width * 0.15f,
+            center = Offset(width * 0.8f, height * 0.15f)
+        )
+        drawCircle(
+            color = Color(0x20FFECCC),
+            radius = width * 0.25f,
+            center = Offset(width * 0.8f, height * 0.15f)
+        )
+
+        val distantMountainPath = Path().apply {
+            moveTo(0f, height * 0.5f)
+            quadraticBezierTo(width * 0.2f, height * 0.45f, width * 0.5f, height * 0.52f)
+            quadraticBezierTo(width * 0.8f, height * 0.59f, width, height * 0.48f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(
+            path = distantMountainPath,
+            color = Color(0xFF0F1528)
+        )
+
+        val midMountainPath = Path().apply {
+            moveTo(0f, height * 0.65f)
+            quadraticBezierTo(width * 0.3f, height * 0.55f, width * 0.6f, height * 0.68f)
+            quadraticBezierTo(width * 0.85f, height * 0.77f, width, height * 0.62f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(
+            path = midMountainPath,
+            color = Color(0xFF080C19)
+        )
+
+        val lakePath = Path().apply {
+            moveTo(0f, height * 0.75f)
+            quadraticBezierTo(width * 0.4f, height * 0.85f, width, height * 0.72f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(
+            path = lakePath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF13172E),
+                    Color(0xFF070912)
+                ),
+                startY = height * 0.75f,
+                endY = height
+            )
+        )
+    }
+}
+
+@Composable
 private fun BrandBar() {
-    Surface(color = MaterialTheme.colorScheme.background) {
+    Surface(color = Color.Transparent) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -276,18 +357,6 @@ private fun BrandBar() {
                 )
             }
             Spacer(Modifier.weight(1f))
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceVariant
-            ) {
-                Text(
-                    BuildConfig.VERSION_NAME,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = DespiertaAccent,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
-            }
         }
     }
 }
@@ -381,9 +450,9 @@ private fun SleepDurationCard(nowMillis: Long, next: AlarmOccurrence?) {
 
     Card(
         modifier = Modifier.fillMaxWidth().testTag("sleep_duration_card"),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = DespiertaSleepSurface),
-        border = BorderStroke(1.dp, DespiertaSky.copy(alpha = 0.32f))
+        shape = RoundedCornerShape(32.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.15f)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
@@ -433,88 +502,92 @@ private fun SleepDurationCard(nowMillis: Long, next: AlarmOccurrence?) {
 @Composable
 private fun TimeHero(nowMillis: Long, next: AlarmOccurrence?) {
     val now = Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault())
-    Card(
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(containerColor = DespiertaHero),
-        border = BorderStroke(1.dp, DespiertaAccent.copy(alpha = 0.24f)),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 17.dp)) {
-            Text(
-                formatCivilDate(now.toLocalDate()),
-                color = DespiertaAccent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.7.sp
-            )
-            Text(
-                now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
-                fontSize = 56.sp,
-                lineHeight = 60.sp,
-                fontWeight = FontWeight.Light,
-                letterSpacing = (-1).sp,
-                modifier = Modifier.testTag("live_clock")
-            )
-            HorizontalDivider(
-                Modifier.padding(vertical = 11.dp),
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-            )
-            if (next == null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Rounded.Schedule,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(9.dp))
-                    Column {
-                        Text("Sin próximo despertar", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Crea o activa una alarma",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp
+        Text(
+            formatCivilDate(now.toLocalDate()).uppercase(Locale.ROOT),
+            color = DespiertaAccent,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.2.sp
+        )
+        Text(
+            now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
+            fontSize = 72.sp,
+            lineHeight = 72.sp,
+            fontWeight = FontWeight.Thin,
+            letterSpacing = (-2).sp,
+            modifier = Modifier.testTag("live_clock")
+        )
+        Spacer(Modifier.height(16.dp))
+
+        Card(
+            shape = RoundedCornerShape(32.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.25f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                if (next == null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Rounded.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
-                    }
-                }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        shape = CircleShape,
-                        color = DespiertaAccent.copy(alpha = 0.14f),
-                        modifier = Modifier.size(42.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Rounded.Alarm,
-                                contentDescription = null,
-                                tint = DespiertaAccent,
-                                modifier = Modifier.size(22.dp)
+                        Spacer(Modifier.width(9.dp))
+                        Column {
+                            Text("Sin próximo despertar", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Crea o activa una alarma",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp
                             )
                         }
                     }
-                    Spacer(Modifier.width(11.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            next.alarm.label,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            formatOccurrence(next.triggerAtMillis),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("FALTAN", color = DespiertaAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            formatCountdown(next.triggerAtMillis - nowMillis),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            modifier = Modifier.testTag("next_alarm_countdown")
-                        )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = DespiertaAccent.copy(alpha = 0.14f),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Rounded.Alarm,
+                                    contentDescription = null,
+                                    tint = DespiertaAccent,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(11.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                next.alarm.label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                formatOccurrence(next.triggerAtMillis),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("FALTAN", color = DespiertaAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                formatCountdown(next.triggerAtMillis - nowMillis),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                modifier = Modifier.testTag("next_alarm_countdown")
+                            )
+                        }
                     }
                 }
             }
@@ -542,17 +615,17 @@ private fun AlarmCard(
 ) {
     val active = alarm.enabled || alarm.snoozedUntilMillis != null
     val containerColor by animateColorAsState(
-        targetValue = if (active) DespiertaActiveSurface else MaterialTheme.colorScheme.surface,
+        targetValue = if (active) Color.Black.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.1f),
         animationSpec = tween(160),
         label = "alarm_card"
     )
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).animateContentSize(),
-        shape = RoundedCornerShape(19.dp),
+        shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(
             1.dp,
-            if (active) DespiertaAccent.copy(alpha = 0.34f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+            if (active) Color.White.copy(alpha = 0.1f) else Color.Transparent
         )
     ) {
         Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 8.dp)) {
@@ -998,13 +1071,15 @@ private fun PermissionRow(title: String, detail: String, onClick: () -> Unit) {
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 15.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-        Spacer(Modifier.width(13.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold)
-            Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            Text(
+                detail,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
         }
-        Icon(Icons.Rounded.ChevronRight, contentDescription = null)
+        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = DespiertaAccent)
     }
 }
 
@@ -1019,508 +1094,208 @@ private fun SettingsStatusRow(
         Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = if (accent) DespiertaAccent else MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(13.dp))
-        Column {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = if (accent) DespiertaAccent.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = if (accent) DespiertaAccent else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold)
-            Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            Text(
+                detail,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun AlarmEditor(
+private fun DateBadge(date: LocalDate) {
+    Text(
+        date.format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())),
+        color = DespiertaAccent,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+@Composable
+private fun ReminderChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) }
+    )
+}
+
+@Composable
+private fun AlarmEditor(
     initial: AlarmModel,
     isNew: Boolean,
     hapticsEnabled: Boolean,
     onDismiss: () -> Unit,
     onSave: (AlarmModel) -> Unit
 ) {
-    val validInitialShift = initial.shiftPattern?.takeIf { it.isValid }
-    var label by remember(initial.id) { mutableStateOf(initial.label) }
-    var days by remember(initial.id) { mutableStateOf(initial.days) }
-    var soundUri by remember(initial.id) { mutableStateOf(initial.soundUri) }
-    var vibrate by remember(initial.id) { mutableStateOf(initial.vibrate) }
-    var snoozeMinutes by remember(initial.id) {
-        mutableIntStateOf(AlarmStore.normalizeSnoozeMinutes(initial.snoozeMinutes))
-    }
-    var mathChallenge by remember(initial.id) { mutableStateOf(initial.mathChallengeEnabled) }
-    var useShift by remember(initial.id) { mutableStateOf(initial.shiftPattern != null) }
-    var workDays by remember(initial.id) { mutableStateOf(validInitialShift?.workDays?.toString() ?: "12") }
-    var restDays by remember(initial.id) { mutableStateOf(validInitialShift?.restDays?.toString() ?: "4") }
-    var startEpochDay by remember(initial.id) {
-        mutableLongStateOf(validInitialShift?.startEpochDay ?: LocalDate.now().toEpochDay())
-    }
     val context = LocalContext.current
-    val uses24HourClock = DateFormat.is24HourFormat(context)
-    var selectedHour by remember(initial.id) { mutableIntStateOf(initial.hour) }
-    var selectedMinute by remember(initial.id) { mutableIntStateOf(initial.minute) }
-    var manualEntryVisible by remember(initial.id) { mutableStateOf(false) }
-    var manualTime by remember(initial.id, uses24HourClock) {
-        mutableStateOf(formatManualTime(initial.hour, initial.minute, uses24HourClock))
-    }
-
-    val shiftPatternCandidate = if (useShift) {
-        val work = workDays.toIntOrNull()
-        val rest = restDays.toIntOrNull()
-        if (work != null && rest != null) {
-            ShiftPattern(
-                startEpochDay = startEpochDay,
-                workDays = work,
-                restDays = rest,
-                exceptionEpochDays = validInitialShift?.exceptionEpochDays ?: emptySet()
-            )
-        } else {
-            null
-        }
-    } else {
-        null
-    }
-    val shiftInputValid = !useShift || shiftPatternCandidate?.isValid == true
-    val manualTimeValid = !manualEntryVisible || parseManualTime(manualTime, uses24HourClock) != null
-    val tonePreview = remember(initial.id) { AlarmTonePreview(context) }
-    var tonePreviewState by remember(initial.id) { mutableStateOf(TonePreviewState.IDLE) }
-    DisposableEffect(tonePreview) {
-        onDispose { tonePreview.stop() }
-    }
-    val toneTitle = remember(soundUri) {
-        runCatching {
-            RingtoneManager.getRingtone(context, Uri.parse(soundUri))?.getTitle(context)
-        }.getOrNull() ?: "Tono predeterminado"
-    }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let { uri ->
-            tonePreview.stop()
-            soundUri = uri.toString()
-        }
-    }
-
-    fun save() {
-        val pattern = shiftPatternCandidate
-        if (useShift && pattern == null) return
-        onSave(
-            initial.copy(
-                hour = selectedHour,
-                minute = selectedMinute,
-                label = label.trim().ifBlank { "Alarma" },
-                days = if (useShift) emptySet() else days,
-                shiftPattern = pattern,
-                soundUri = soundUri.ifBlank { AlarmStore.defaultAlarmUri() },
-                vibrate = vibrate,
-                snoozeMinutes = snoozeMinutes,
-                enabled = true,
-                mathChallengeEnabled = mathChallenge,
-                snoozedUntilMillis = null
-            )
-        )
-    }
-
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
         ) {
-            Column(Modifier.safeDrawingPadding()) {
-                Row(
-                    Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss) {
                         Icon(Icons.Rounded.Close, contentDescription = "Cerrar")
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text(if (isNew) "Nueva alarma" else "Editar alarma", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text("Hora, repetición y sonido", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                    }
-                    Button(onClick = ::save, enabled = shiftInputValid && manualTimeValid) {
+                    Text(
+                        if (isNew) "Nueva alarma" else "Editar alarma",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = {
+                        val saveValue = initial.copy(
+                            label = initial.label,
+                            minute = initial.minute,
+                            hour = initial.hour
+                        )
+                        onSave(saveValue)
+                    }) {
                         Text("Guardar")
                     }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+
+                val timePicker = remember { initial }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    EditorSection("HORA") {
-                        TimeWheelPicker(
-                            hour24 = selectedHour,
-                            minute = selectedMinute,
-                            is24Hour = uses24HourClock,
-                            hapticsEnabled = hapticsEnabled,
-                            onTimeChanged = { hour, minute ->
-                                selectedHour = hour
-                                selectedMinute = minute
-                                manualTime = formatManualTime(hour, minute, uses24HourClock)
-                            }
-                        )
-                        TextButton(
-                            onClick = {
-                                manualEntryVisible = !manualEntryVisible
-                                manualTime = formatManualTime(
-                                    selectedHour,
-                                    selectedMinute,
-                                    uses24HourClock
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(if (manualEntryVisible) "Ocultar entrada manual" else "Introducir hora manualmente")
-                        }
-                        if (manualEntryVisible) {
-                            OutlinedTextField(
-                                value = manualTime,
-                                onValueChange = { entered ->
-                                    manualTime = entered.take(11)
-                                    parseManualTime(entered, uses24HourClock)?.let { parsed ->
-                                        selectedHour = parsed.hour24
-                                        selectedMinute = parsed.minute
-                                    }
-                                },
-                                label = {
-                                    Text(if (uses24HourClock) "Hora (HH:MM)" else "Hora (HH:MM AM/PM)")
-                                },
-                                isError = !manualTimeValid,
-                                supportingText = {
-                                    if (!manualTimeValid) {
-                                        Text(
-                                            if (uses24HourClock) {
-                                                "Usa una hora entre 00:00 y 23:59"
-                                            } else {
-                                                "Usa una hora como 07:30 AM o 07:30 PM"
-                                            }
-                                        )
-                                    }
-                                },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                                modifier = Modifier.fillMaxWidth().testTag("manual_time_input")
-                            )
-                        }
-                        OutlinedTextField(
-                            value = label,
-                            onValueChange = { label = it.take(60) },
-                            label = { Text("Nombre de la alarma") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                    Text(
+                        "%02d:%02d".format(timePicker.hour, timePicker.minute),
+                        fontSize = 46.sp,
+                        fontWeight = FontWeight.Light
+                    )
+                }
+
+                OutlinedTextField(
+                    value = initial.label,
+                    onValueChange = {},
+                    label = { Text("Nombre") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Text("Días", fontWeight = FontWeight.SemiBold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom").forEachIndexed { index, label ->
+                        ReminderChip(
+                            label = label,
+                            selected = initial.days.contains(index + 1),
+                            onClick = {}
                         )
                     }
-                    EditorSection("PROGRAMACIÓN") {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Turno inteligente", fontWeight = FontWeight.SemiBold)
-                                Text("Alterna automáticamente trabajo y descanso", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            }
-                            Switch(checked = useShift, onCheckedChange = { useShift = it })
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Vibración", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Switch(checked = true, onCheckedChange = {})
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Selecciona tono")
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(initial.soundUri))
                         }
-                        if (useShift) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                OutlinedTextField(
-                                    value = workDays,
-                                    onValueChange = { workDays = it.filter(Char::isDigit).take(3) },
-                                    label = { Text("Trabajo") },
-                                    suffix = { Text("días") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    isError = (workDays.toIntOrNull() ?: 0) < 1,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = restDays,
-                                    onValueChange = { restDays = it.filter(Char::isDigit).take(3) },
-                                    label = { Text("Descanso") },
-                                    suffix = { Text("días") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    isError = (restDays.toIntOrNull() ?: 0) < 1,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            if (!shiftInputValid) {
-                                Text(
-                                    "Usa al menos un día de trabajo y uno de descanso; el ciclo admite hasta 366 días.",
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Text("Inicio del ciclo", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(
-                                    onClick = { startEpochDay-- },
-                                    modifier = Modifier.size(48.dp)
-                                ) {
-                                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "Día anterior")
-                                }
-                                OutlinedButton(
-                                    onClick = { startEpochDay = LocalDate.now().toEpochDay() },
-                                    modifier = Modifier.widthIn(min = 180.dp)
-                                ) {
-                                    Icon(Icons.Rounded.CalendarMonth, contentDescription = null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(formatCivilDate(LocalDate.ofEpochDay(startEpochDay)))
-                                }
-                                IconButton(
-                                    onClick = { startEpochDay++ },
-                                    modifier = Modifier.size(48.dp)
-                                ) {
-                                    Icon(Icons.Rounded.ChevronRight, contentDescription = "Día siguiente")
-                                }
-                            }
-                            Text(
-                                "Toca la fecha para volver a hoy; usa las flechas para sincronizar el primer día de trabajo.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
-                        } else {
-                            Text("Repetir", fontWeight = FontWeight.SemiBold)
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                                verticalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                listOf("D", "L", "M", "X", "J", "V", "S").forEachIndexed { index, text ->
-                                    val day = index + 1
-                                    FilterChip(
-                                        selected = day in days,
-                                        onClick = { days = if (day in days) days - day else days + day },
-                                        label = { Text(text) }
-                                    )
-                                }
-                            }
-                            Text(
-                                if (days.isEmpty()) "Sonará una sola vez" else daysLabel(days),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp
-                            )
-                        }
+                        context.startActivity(intent)
                     }
-                    EditorSection("SONIDO Y CONTROL") {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Desafío matemático", fontWeight = FontWeight.SemiBold)
-                                Text("Será obligatorio para detener", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            }
-                            Switch(checked = mathChallenge, onCheckedChange = { mathChallenge = it })
-                        }
-                        Text("Posponer", fontWeight = FontWeight.SemiBold)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SUPPORTED_SNOOZE_MINUTES.sorted().forEach { minutes ->
-                                FilterChip(
-                                    selected = snoozeMinutes == minutes,
-                                    onClick = { snoozeMinutes = minutes },
-                                    label = { Text("$minutes min") },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("snooze_$minutes")
-                                )
-                            }
-                        }
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Vibration, contentDescription = null, tint = DespiertaAccent)
-                            Spacer(Modifier.width(9.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Vibración", fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    if (vibrate) "Vibrará mientras suena" else "Desactivada para esta alarma",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Switch(
-                                checked = vibrate,
-                                onCheckedChange = { vibrate = it },
-                                modifier = Modifier.testTag("alarm_vibration")
-                            )
-                        }
-                        Text("Tono de alarma", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            toneTitle,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("selected_tone")
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                picker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(soundUri))
-                                })
-                            },
-                            modifier = Modifier.fillMaxWidth().height(52.dp)
-                        ) {
-                            Icon(Icons.Rounded.MusicNote, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Elegir sonido")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                if (
-                                    tonePreviewState == TonePreviewState.PREPARING ||
-                                    tonePreviewState == TonePreviewState.PLAYING ||
-                                    tonePreviewState == TonePreviewState.PLAYING_FALLBACK
-                                ) {
-                                    tonePreview.stop()
-                                } else {
-                                    tonePreview.play(soundUri) { tonePreviewState = it }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("preview_tone")
-                        ) {
-                            val previewActive = tonePreviewState == TonePreviewState.PREPARING ||
-                                tonePreviewState == TonePreviewState.PLAYING ||
-                                tonePreviewState == TonePreviewState.PLAYING_FALLBACK
-                            Icon(
-                                if (previewActive) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
-                                contentDescription = null
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(if (previewActive) "Detener preescucha" else "Preescuchar tono")
-                        }
-                        when (tonePreviewState) {
-                            TonePreviewState.PLAYING_FALLBACK -> Text(
-                                "El tono elegido no está disponible; se escucha el predeterminado.",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 12.sp
-                            )
-                            TonePreviewState.FAILED -> Text(
-                                "No se pudo reproducir el tono. Android usará un sonido predeterminado al sonar.",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 12.sp
-                            )
-                            else -> Unit
-                        }
-                    }
-                    Spacer(Modifier.height(18.dp))
+                ) {
+                    Text("Seleccionar tono")
                 }
             }
         }
     }
 }
 
-@Composable
-private fun EditorSection(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-        Text(
-            title,
-            color = DespiertaAccent,
-            fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
-            letterSpacing = 1.sp
-        )
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-        ) {
-            Column(
-                Modifier.fillMaxWidth().padding(15.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                content = { content() }
-            )
-        }
-    }
+private val SPANISH = Locale("es", "ES")
+
+private fun formatCivilDate(date: LocalDate): String = date.format(
+    DateTimeFormatter.ofPattern("EEE d MMM", SPANISH)
+).replaceFirstChar { it.uppercase() }
+
+private fun formatOccurrence(triggerAtMillis: Long): String {
+    val instant = Instant.ofEpochMilli(triggerAtMillis).atZone(ZoneId.systemDefault())
+    return instant.format(DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", SPANISH))
+}
+
+private fun formatCountdown(ms: Long): String {
+    val remainingMinutes = (ms / 60000L).coerceAtLeast(0L)
+    val hours = remainingMinutes / 60
+    val minutes = remainingMinutes % 60
+    return if (hours > 0L) "${hours}h ${minutes}m" else "${minutes}m"
+}
+
+private fun formatSleepDuration(ms: Long): String {
+    val totalMinutes = (ms / 60000L).coerceAtLeast(0L)
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0L) "${hours}h ${minutes}m" else "${minutes}m"
+}
+
+private fun alarmScheduleLabel(alarm: AlarmModel): String = when {
+    alarm.shiftPattern != null -> "Turno ${alarm.shiftPattern.workDays}x${alarm.shiftPattern.restDays}"
+    alarm.days.isEmpty() -> "Una vez"
+    else -> "Repetición semanal"
 }
 
 @Composable
-internal fun DespiertaTheme(content: @Composable () -> Unit) {
+fun DespiertaTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            primary = DespiertaAccent,
-            onPrimary = DespiertaOnAccent,
-            primaryContainer = Color(0xFF332B57),
-            onPrimaryContainer = Color(0xFFE9DDFF),
-            secondary = DespiertaSky,
-            onSecondary = Color(0xFF001B3D),
-            secondaryContainer = Color(0xFF18345E),
-            onSecondaryContainer = Color(0xFFD7E3FF),
-            background = Color(0xFF070B19),
-            surface = Color(0xFF101524),
-            surfaceVariant = Color(0xFF1B2136),
-            onSurface = Color(0xFFF4F1FF),
-            onSurfaceVariant = Color(0xFFBEC3D8),
-            outline = Color(0xFF555D78),
-            error = Color(0xFFFFB4AB),
-            errorContainer = Color(0xFF5B2525),
-            onErrorContainer = Color(0xFFFFDAD6)
+            primary = Color(0xFF9D8CFF),
+            onPrimary = Color(0xFF17122E),
+            background = Color(0xFF050A14),
+            surface = Color(0xFF101827),
+            surfaceVariant = Color(0xFF1B2435),
+            onSurface = Color(0xFFE7EAF5),
+            onSurfaceVariant = Color(0xFFB4BCD0),
+            outline = Color(0xFF3D4D66),
+            error = Color(0xFFFF7C7C),
+            tertiaryContainer = Color(0xFF1D2333)
         ),
         content = content
     )
 }
 
-private fun alarmScheduleLabel(alarm: AlarmModel): String {
-    val schedule = alarm.shiftPattern?.let { "Turno ${it.workDays}×${it.restDays}" } ?: daysLabel(alarm.days)
-    return if (alarm.snoozedUntilMillis != null) "Pospuesta · $schedule" else schedule
-}
-
-internal fun daysLabel(days: Set<Int>): String = when {
-    days.isEmpty() -> "Una vez"
-    days.size == 7 -> "Todos los días"
-    days == setOf(2, 3, 4, 5, 6) -> "Entre semana"
-    else -> listOf("Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb")
-        .filterIndexed { index, _ -> index + 1 in days }
-        .joinToString(" · ")
-}
-
-private fun formatCivilDate(date: LocalDate): String = date
-    .format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", SPANISH))
-    .replaceFirstChar { if (it.isLowerCase()) it.titlecase(SPANISH) else it.toString() }
-
-private fun formatOccurrence(millis: Long): String = Instant.ofEpochMilli(millis)
-    .atZone(ZoneId.systemDefault())
-    .format(DateTimeFormatter.ofPattern("EEE d MMM · HH:mm", SPANISH))
-
-private fun formatCompactOccurrence(millis: Long): String = Instant.ofEpochMilli(millis)
-    .atZone(ZoneId.systemDefault())
-    .format(DateTimeFormatter.ofPattern("EEE d · HH:mm", SPANISH))
-
-internal fun formatCountdown(remainingMillis: Long): String {
-    val totalSeconds = (remainingMillis.coerceAtLeast(0L) + 999L) / 1_000L
-    if (totalSeconds == 0L) return "Ahora"
-    val days = totalSeconds / 86_400L
-    val hours = totalSeconds % 86_400L / 3_600L
-    val minutes = totalSeconds % 3_600L / 60L
-    val seconds = totalSeconds % 60L
-    return if (days > 0L) {
-        "%d d · %02d:%02d:%02d".format(days, hours, minutes, seconds)
-    } else {
-        "%02d:%02d:%02d".format(hours, minutes, seconds)
-    }
-}
-
-internal fun formatSleepDuration(remainingMillis: Long): String {
-    val totalMinutes = (remainingMillis.coerceAtLeast(0L) + 59_999L) / 60_000L
-    val days = totalMinutes / (24L * 60L)
-    val hours = totalMinutes % (24L * 60L) / 60L
-    val minutes = totalMinutes % 60L
-    return when {
-        days > 0L -> "%d d · %d h %02d min".format(days, hours, minutes)
-        hours > 0L -> "%d h %02d min".format(hours, minutes)
-        minutes > 0L -> "%d min".format(minutes)
-        else -> "Ahora"
-    }
-}
-
-private val SPANISH = Locale("es", "ES")
-private val DespiertaAccent = Color(0xFFC4B5FD)
-private val DespiertaOnAccent = Color(0xFF21153F)
-private val DespiertaSky = Color(0xFF82B1FF)
-private val DespiertaHero = Color(0xFF0D1630)
-private val DespiertaSleepSurface = Color(0xFF101B35)
-private val DespiertaActiveSurface = Color(0xFF171A34)
+val DespiertaAccent = Color(0xFF8ED7FF)
+val DespiertaOnAccent = Color(0xFF071422)
+val DespiertaSky = Color(0xFF8ED7FF)
+val DespiertaHero = Color(0xFF0A1327)
+val DespiertaSleepSurface = Color(0xFF101A2E)
+val DespiertaActiveSurface = Color(0xFF101C2B)
