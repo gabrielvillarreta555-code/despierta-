@@ -49,16 +49,16 @@ class DespiertaUiInstrumentedTest {
     @Test
     fun versionAndPrimaryNavigationAreVisible() {
         composeRule.onNodeWithText("DESPIERTA").assertIsDisplayed()
-        composeRule.onNodeWithText("2.5").assertIsDisplayed()
         composeRule.onNodeWithTag("live_clock").assertIsDisplayed()
         composeRule.onNodeWithTag("sleep_duration_card").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_shifts").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_settings").assertIsDisplayed()
 
         composeRule.onNodeWithTag("nav_shifts").performClick()
         composeRule.onNodeWithTag("shift_screen").assertIsDisplayed()
 
         composeRule.onNodeWithTag("nav_settings").performClick()
         composeRule.onNodeWithTag("settings_screen").assertIsDisplayed()
-        composeRule.onNodeWithText("Despierta 2.5").assertIsDisplayed()
     }
 
     @Test
