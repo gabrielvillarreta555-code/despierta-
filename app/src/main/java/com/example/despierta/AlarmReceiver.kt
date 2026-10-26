@@ -8,10 +8,23 @@ import androidx.core.content.ContextCompat
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getIntExtra(AlarmScheduler.EXTRA_ID, -1)
+        val expectedTriggerAt = intent.getLongExtra(
+            AlarmScheduler.EXTRA_EXPECTED_TRIGGER_AT,
+            0L
+        )
         val store = AlarmStore(context)
         val alarm = store.find(id)
         if (id <= 0 || alarm == null) {
             AlarmLog.warning("receiver_ignored", "id=$id reason=missing_alarm")
+            if (id > 0) AlarmScheduleRegistry(context).clear(id)
+            return
+        }
+
+        if (!AlarmScheduleRegistry(context).claim(id, expectedTriggerAt)) {
+            AlarmLog.warning(
+                "receiver_ignored",
+                "id=$id reason=stale_delivery expectedAt=$expectedTriggerAt"
+            )
             return
         }
 
@@ -35,33 +48,42 @@ class AlarmReceiver : BroadcastReceiver() {
         }
 
         AlarmLog.info("receiver_fired", "id=$id snooze=$isSnooze receivedAt=$now")
-        val updated = when {
-            isSnooze -> alarm.copy(snoozedUntilMillis = null)
-            alarm.days.isEmpty() -> alarm.copy(enabled = false, snoozedUntilMillis = null)
-            else -> alarm.copy(snoozedUntilMillis = null)
-        }
+        val updated = stateAfterFiring(alarm, isSnooze)
         store.save(updated)
 
+        runCatching { AlarmWakeLock.acquireForServiceLaunch(context) }
+            .onFailure { AlarmLog.warning("launch_wakelock_failed", "id=$id", it) }
         try {
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, AlarmService::class.java)
                     .setAction(AlarmService.ACTION_RING)
                     .putExtra(AlarmScheduler.EXTRA_ID, id)
+                    .putExtra(AlarmScheduler.EXTRA_EXPECTED_TRIGGER_AT, expectedTriggerAt)
             )
             AlarmLog.info("service_start_requested", "id=$id")
         } catch (error: RuntimeException) {
+            AlarmWakeLock.releaseAfterServiceLaunch()
             AlarmLog.error("service_start_failed", "id=$id", error)
         }
 
         // setAlarmClock() is one-shot. Re-register repeating alarms immediately;
         // a one-time alarm stays disabled but can still be explicitly snoozed.
-        if (updated.enabled && updated.days.isNotEmpty()) {
+        if (updated.enabled && isRecurring(updated)) {
             AlarmScheduler(context).schedule(updated)
         }
     }
 
     companion object {
         private const val EARLY_TOLERANCE_MILLIS = 30_000L
+
+        internal fun isRecurring(alarm: AlarmModel): Boolean =
+            alarm.days.isNotEmpty() || alarm.shiftPattern?.isValid == true
+
+        internal fun stateAfterFiring(alarm: AlarmModel, isSnooze: Boolean): AlarmModel = when {
+            isSnooze -> alarm.copy(snoozedUntilMillis = null)
+            isRecurring(alarm) -> alarm.copy(snoozedUntilMillis = null)
+            else -> alarm.copy(enabled = false, snoozedUntilMillis = null)
+        }
     }
 }
