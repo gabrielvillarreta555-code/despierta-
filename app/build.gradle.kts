@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.despierta"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "2.4"
+        versionCode = 8
+        versionName = "2.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GIT_COMMIT", "\"${buildCommit.take(12)}\"")
     }

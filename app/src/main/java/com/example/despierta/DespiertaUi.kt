@@ -46,6 +46,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.AlarmAdd
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -97,7 +98,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -142,6 +146,7 @@ internal fun DespiertaApp(
     section: AppSection,
     permissionState: PermissionUiState,
     hapticsEnabled: Boolean,
+    liveClockUpdates: Boolean = true,
     snackbarHostState: SnackbarHostState,
     onSectionSelected: (AppSection) -> Unit,
     onAddAlarm: () -> Unit,
@@ -156,7 +161,11 @@ internal fun DespiertaApp(
     onRequestAlarmChannel: () -> Unit
 ) {
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    DisposableEffect(Unit) {
+    DisposableEffect(liveClockUpdates) {
+        if (!liveClockUpdates) {
+            nowMillis = System.currentTimeMillis()
+            return@DisposableEffect onDispose { }
+        }
         val handler = Handler(Looper.getMainLooper())
         val ticker = object : Runnable {
             override fun run() {
@@ -169,9 +178,11 @@ internal fun DespiertaApp(
         onDispose { handler.removeCallbacks(ticker) }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    Box(Modifier.fillMaxSize()) {
+        NightLandscapeBackground()
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = { BrandBar() },
         bottomBar = {
@@ -191,48 +202,129 @@ internal fun DespiertaApp(
                 )
             }
         }
-    ) { innerPadding ->
-        Crossfade(
-            targetState = section,
-            animationSpec = tween(180),
-            label = "section",
-            modifier = Modifier.fillMaxSize().padding(innerPadding)
-        ) { selected ->
-            when (selected) {
-                AppSection.ALARMS -> AlarmHome(
-                    alarms = alarms,
-                    nowMillis = nowMillis,
-                    onAddAlarm = onAddAlarm,
-                    onEditAlarm = onEditAlarm,
-                    onToggleAlarm = onToggleAlarm,
-                    onDeleteAlarm = onDeleteAlarm
-                )
+        ) { innerPadding ->
+            Crossfade(
+                targetState = section,
+                animationSpec = tween(180),
+                label = "section",
+                modifier = Modifier.fillMaxSize().padding(innerPadding)
+            ) { selected ->
+                when (selected) {
+                    AppSection.ALARMS -> AlarmHome(
+                        alarms = alarms,
+                        nowMillis = nowMillis,
+                        onAddAlarm = onAddAlarm,
+                        onEditAlarm = onEditAlarm,
+                        onToggleAlarm = onToggleAlarm,
+                        onDeleteAlarm = onDeleteAlarm
+                    )
 
-                AppSection.SHIFTS -> ShiftScreen(
-                    alarms = alarms,
-                    nowMillis = nowMillis,
-                    onAddShiftAlarm = onAddShiftAlarm,
-                    onEditAlarm = onEditAlarm,
-                    onToggleAlarm = onToggleAlarm
-                )
+                    AppSection.SHIFTS -> ShiftScreen(
+                        alarms = alarms,
+                        nowMillis = nowMillis,
+                        onAddShiftAlarm = onAddShiftAlarm,
+                        onEditAlarm = onEditAlarm,
+                        onToggleAlarm = onToggleAlarm
+                    )
 
-                AppSection.SETTINGS -> SettingsScreen(
-                    permissionState = permissionState,
-                    hapticsEnabled = hapticsEnabled,
-                    onHapticsChanged = onHapticsChanged,
-                    onRequestExactAlarm = onRequestExactAlarm,
-                    onRequestNotifications = onRequestNotifications,
-                    onRequestFullScreen = onRequestFullScreen,
-                    onRequestAlarmChannel = onRequestAlarmChannel
-                )
+                    AppSection.SETTINGS -> SettingsScreen(
+                        permissionState = permissionState,
+                        hapticsEnabled = hapticsEnabled,
+                        onHapticsChanged = onHapticsChanged,
+                        onRequestExactAlarm = onRequestExactAlarm,
+                        onRequestNotifications = onRequestNotifications,
+                        onRequestFullScreen = onRequestFullScreen,
+                        onRequestAlarmChannel = onRequestAlarmChannel
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
+private fun NightLandscapeBackground() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val width = size.width
+        val height = size.height
+
+        // Sky gradient
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF040614), // Deep night sky top
+                    Color(0xFF0D122B), // Violet dark mid
+                    Color(0xFF1B1F3C)  // Horizon
+                )
+            )
+        )
+
+        // Moon (Warm elegant light)
+        drawCircle(
+            color = Color(0xFFFFECCC), // Warm soft moon color
+            radius = width * 0.15f,
+            center = androidx.compose.ui.geometry.Offset(width * 0.8f, height * 0.15f)
+        )
+        // Moon glow
+        drawCircle(
+            color = Color(0x20FFECCC),
+            radius = width * 0.25f,
+            center = androidx.compose.ui.geometry.Offset(width * 0.8f, height * 0.15f)
+        )
+
+        // Distant Mountains (soft organic path)
+        val distantMountainPath = Path().apply {
+            moveTo(0f, height * 0.5f)
+            quadraticBezierTo(width * 0.2f, height * 0.45f, width * 0.5f, height * 0.52f)
+            quadraticBezierTo(width * 0.8f, height * 0.59f, width, height * 0.48f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(
+            path = distantMountainPath,
+            color = Color(0xFF0F1528)
+        )
+
+        // Mid Mountains
+        val midMountainPath = Path().apply {
+            moveTo(0f, height * 0.65f)
+            quadraticBezierTo(width * 0.3f, height * 0.55f, width * 0.6f, height * 0.68f)
+            quadraticBezierTo(width * 0.85f, height * 0.77f, width, height * 0.62f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(
+            path = midMountainPath,
+            color = Color(0xFF080C19)
+        )
+
+        // Lake reflections / Front layer
+        val lakePath = Path().apply {
+            moveTo(0f, height * 0.75f)
+            quadraticBezierTo(width * 0.4f, height * 0.85f, width, height * 0.72f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(
+            path = lakePath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF13172E),
+                    Color(0xFF070912)
+                ),
+                startY = height * 0.75f,
+                endY = height
+            )
+        )
+    }
+}
+
+@Composable
 private fun BrandBar() {
-    Surface(color = MaterialTheme.colorScheme.background) {
+    Surface(color = Color.Transparent) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -270,18 +362,6 @@ private fun BrandBar() {
                 )
             }
             Spacer(Modifier.weight(1f))
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceVariant
-            ) {
-                Text(
-                    BuildConfig.VERSION_NAME,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = DespiertaAccent,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
-            }
         }
     }
 }
@@ -338,6 +418,7 @@ private fun AlarmHome(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { TimeHero(nowMillis = nowMillis, next = next) }
+        item { SleepDurationCard(nowMillis = nowMillis, next = next) }
         item {
             SectionHeading(
                 title = "Tus alarmas",
@@ -360,34 +441,104 @@ private fun AlarmHome(
 }
 
 @Composable
+private fun SleepDurationCard(nowMillis: Long, next: AlarmOccurrence?) {
+    val remainingMillis = next?.triggerAtMillis?.minus(nowMillis)
+    val sleepWindow = remainingMillis?.let(::formatSleepDuration)
+    val guidance = when {
+        remainingMillis == null -> "Activa una alarma para calcular tu ventana de descanso."
+        remainingMillis < 7 * 60 * 60 * 1_000L ->
+            "Descanso corto: prepara el ambiente y reduce distracciones antes de dormir."
+        remainingMillis <= 9 * 60 * 60 * 1_000L ->
+            "Una ventana dentro de la referencia general de 7 a 9 horas para adultos."
+        else -> "Aún tienes tiempo para preparar una rutina tranquila antes de acostarte."
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("sleep_duration_card"),
+        shape = RoundedCornerShape(32.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.15f)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = DespiertaSky.copy(alpha = 0.14f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.Bedtime,
+                        contentDescription = null,
+                        tint = DespiertaSky,
+                        modifier = Modifier.size(25.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "DESCANSO ESTIMADO",
+                    color = DespiertaSky,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.9.sp
+                )
+                Text(
+                    sleepWindow ?: "Sin próxima alarma",
+                    fontSize = if (sleepWindow == null) 18.sp else 27.sp,
+                    lineHeight = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("sleep_duration_value")
+                )
+                Text(
+                    guidance,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun TimeHero(nowMillis: Long, next: AlarmOccurrence?) {
     val now = Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault())
-    Card(
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(containerColor = DespiertaHero),
-        border = BorderStroke(1.dp, DespiertaAccent.copy(alpha = 0.24f)),
-        modifier = Modifier.fillMaxWidth()
+    // Minimalist live clock without the card background
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 17.dp)) {
-            Text(
-                formatCivilDate(now.toLocalDate()),
-                color = DespiertaAccent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.7.sp
-            )
-            Text(
-                now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
-                fontSize = 56.sp,
-                lineHeight = 60.sp,
-                fontWeight = FontWeight.Light,
-                letterSpacing = (-1).sp,
-                modifier = Modifier.testTag("live_clock")
-            )
-            HorizontalDivider(
-                Modifier.padding(vertical = 11.dp),
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-            )
+        Text(
+            formatCivilDate(now.toLocalDate()).uppercase(Locale.ROOT),
+            color = DespiertaAccent,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.2.sp
+        )
+        Text(
+            now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
+            fontSize = 72.sp,
+            lineHeight = 72.sp,
+            fontWeight = FontWeight.Thin,
+            letterSpacing = (-2).sp,
+            modifier = Modifier.testTag("live_clock")
+        )
+        Spacer(Modifier.height(16.dp))
+
+        // Inside the Next Alarm section we can put a very subtle translucent card
+        // to group the next alarm info separate from the clock
+        Card(
+            shape = RoundedCornerShape(32.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.25f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
             if (next == null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -444,17 +595,9 @@ private fun TimeHero(nowMillis: Long, next: AlarmOccurrence?) {
                             fontSize = 15.sp,
                             modifier = Modifier.testTag("next_alarm_countdown")
                         )
-                        val sleepDuration = (next.triggerAtMillis - nowMillis) - 15 * 60 * 1000L // Assume 15m to fall asleep
-                        if (sleepDuration > 0) {
-                            Text(
-                                "Sueño est.: ~" + formatCountdown(sleepDuration),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontSize = 10.sp,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
                     }
                 }
+            }
             }
         }
     }
@@ -480,17 +623,17 @@ private fun AlarmCard(
 ) {
     val active = alarm.enabled || alarm.snoozedUntilMillis != null
     val containerColor by animateColorAsState(
-        targetValue = if (active) DespiertaActiveSurface else MaterialTheme.colorScheme.surface,
+        targetValue = if (active) Color.Black.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.1f),
         animationSpec = tween(160),
         label = "alarm_card"
     )
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).animateContentSize(),
-        shape = RoundedCornerShape(19.dp),
+        shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(
             1.dp,
-            if (active) DespiertaAccent.copy(alpha = 0.34f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+            if (active) Color.White.copy(alpha = 0.1f) else Color.Transparent
         )
     ) {
         Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 8.dp)) {
@@ -1382,16 +1525,18 @@ internal fun DespiertaTheme(content: @Composable () -> Unit) {
         colorScheme = darkColorScheme(
             primary = DespiertaAccent,
             onPrimary = DespiertaOnAccent,
-            primaryContainer = Color(0xFF1A2642),
-            onPrimaryContainer = Color(0xFFB4BEFE),
-            secondary = DespiertaAccent,
-            onSecondary = DespiertaOnAccent,
-            background = Color(0xFF0C0E12),
-            surface = Color(0xFF101729),
-            surfaceVariant = Color(0xFF1E2840),
-            onSurface = Color(0xFFF4F1EB),
-            onSurfaceVariant = Color(0xFFAAAEB7),
-            outline = Color(0xFF4A4F59),
+            primaryContainer = Color(0xFF332B57),
+            onPrimaryContainer = Color(0xFFE9DDFF),
+            secondary = DespiertaSky,
+            onSecondary = Color(0xFF001B3D),
+            secondaryContainer = Color(0xFF18345E),
+            onSecondaryContainer = Color(0xFFD7E3FF),
+            background = Color(0xFF070B19),
+            surface = Color(0xFF101524),
+            surfaceVariant = Color(0xFF1B2136),
+            onSurface = Color(0xFFF4F1FF),
+            onSurfaceVariant = Color(0xFFBEC3D8),
+            outline = Color(0xFF555D78),
             error = Color(0xFFFFB4AB),
             errorContainer = Color(0xFF5B2525),
             onErrorContainer = Color(0xFFFFDAD6)
@@ -1440,8 +1585,23 @@ internal fun formatCountdown(remainingMillis: Long): String {
     }
 }
 
+internal fun formatSleepDuration(remainingMillis: Long): String {
+    val totalMinutes = (remainingMillis.coerceAtLeast(0L) + 59_999L) / 60_000L
+    val days = totalMinutes / (24L * 60L)
+    val hours = totalMinutes % (24L * 60L) / 60L
+    val minutes = totalMinutes % 60L
+    return when {
+        days > 0L -> "%d d · %d h %02d min".format(days, hours, minutes)
+        hours > 0L -> "%d h %02d min".format(hours, minutes)
+        minutes > 0L -> "%d min".format(minutes)
+        else -> "Ahora"
+    }
+}
+
 private val SPANISH = Locale("es", "ES")
-private val DespiertaAccent = Color(0xFF89B4FA)
-private val DespiertaOnAccent = Color(0xFF040A18)
-private val DespiertaHero = Color(0xFF070C15)
-private val DespiertaActiveSurface = Color(0xFF101729)
+private val DespiertaAccent = Color(0xFFC4B5FD)
+private val DespiertaOnAccent = Color(0xFF21153F)
+private val DespiertaSky = Color(0xFF82B1FF)
+private val DespiertaHero = Color(0xFF0D1630)
+private val DespiertaSleepSurface = Color(0xFF101B35)
+private val DespiertaActiveSurface = Color(0xFF171A34)
