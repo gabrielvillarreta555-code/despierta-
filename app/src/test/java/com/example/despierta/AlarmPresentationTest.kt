@@ -70,6 +70,14 @@ class AlarmPresentationTest {
         assertEquals("Ahora", formatCountdown(0L))
     }
 
+    @Test
+    fun sleepDurationRoundsUpAndFormatsShortAndLongWindows() {
+        assertEquals("Ahora", formatSleepDuration(0L))
+        assertEquals("1 min", formatSleepDuration(1L))
+        assertEquals("7 h 30 min", formatSleepDuration(7 * 3_600_000L + 30 * 60_000L))
+        assertEquals("1 d · 2 h 05 min", formatSleepDuration(26 * 3_600_000L + 5 * 60_000L))
+    }
+
     private fun instant(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
         GregorianCalendar(utc).apply {
             clear()

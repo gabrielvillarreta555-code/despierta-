@@ -117,6 +117,10 @@ class MainActivity : ComponentActivity() {
                 section = section,
                 permissionState = permissionState,
                 hapticsEnabled = hapticsEnabled,
+                liveClockUpdates = !(
+                    BuildConfig.DEBUG &&
+                        intent.getBooleanExtra(EXTRA_DISABLE_LIVE_CLOCK_FOR_TESTS, false)
+                    ),
                 snackbarHostState = snackbar,
                 onSectionSelected = {
                     feedback()
@@ -224,6 +228,8 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        internal const val EXTRA_DISABLE_LIVE_CLOCK_FOR_TESTS =
+            "com.example.despierta.extra.DISABLE_LIVE_CLOCK_FOR_TESTS"
         // Inlined strings keep the guarded settings actions safe on the minSdk 26 code path.
         private const val ACTION_REQUEST_EXACT_ALARM =
             "android.settings.REQUEST_SCHEDULE_EXACT_ALARM"
