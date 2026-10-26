@@ -63,6 +63,6 @@ class AlarmScreenInstrumentedTest {
     }
 
     companion object {
-        const val SCREENSHOT_NAME = "Despierta-2.4-Alarma-activa.png"
+        const val SCREENSHOT_NAME = "Despierta-2.5-Alarma-activa.png"
     }
 }

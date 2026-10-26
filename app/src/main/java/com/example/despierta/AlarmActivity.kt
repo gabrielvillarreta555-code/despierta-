@@ -104,12 +104,14 @@ class AlarmActivity : ComponentActivity() {
 
         MaterialTheme(
             colorScheme = darkColorScheme(
-                primary = Color(0xFF82B1FF),
-                onPrimary = Color(0xFF001B3D),
+                primary = Color(0xFFC4B5FD),
+                onPrimary = Color(0xFF21153F),
+                secondary = Color(0xFF82B1FF),
+                onSecondary = Color(0xFF001B3D),
                 background = Color(0xFF070B19),
                 surface = Color(0xFF101524),
-                onSurface = Color(0xFFF4F1EB),
-                onSurfaceVariant = Color(0xFFAAAEB7)
+                onSurface = Color(0xFFF4F1FF),
+                onSurfaceVariant = Color(0xFFBEC3D8)
             )
         ) {
             Box(

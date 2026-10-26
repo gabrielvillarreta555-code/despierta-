@@ -46,6 +46,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.AlarmAdd
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -338,6 +339,7 @@ private fun AlarmHome(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { TimeHero(nowMillis = nowMillis, next = next) }
+        item { SleepDurationCard(nowMillis = nowMillis, next = next) }
         item {
             SectionHeading(
                 title = "Tus alarmas",
@@ -353,6 +355,70 @@ private fun AlarmHome(
                     onClick = { onEditAlarm(alarm) },
                     onToggle = { onToggleAlarm(alarm, it) },
                     onDelete = { onDeleteAlarm(alarm) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SleepDurationCard(nowMillis: Long, next: AlarmOccurrence?) {
+    val remainingMillis = next?.triggerAtMillis?.minus(nowMillis)
+    val sleepWindow = remainingMillis?.let(::formatSleepDuration)
+    val guidance = when {
+        remainingMillis == null -> "Activa una alarma para calcular tu ventana de descanso."
+        remainingMillis < 7 * 60 * 60 * 1_000L ->
+            "Descanso corto: prepara el ambiente y reduce distracciones antes de dormir."
+        remainingMillis <= 9 * 60 * 60 * 1_000L ->
+            "Una ventana dentro de la referencia general de 7 a 9 horas para adultos."
+        else -> "Aún tienes tiempo para preparar una rutina tranquila antes de acostarte."
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("sleep_duration_card"),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = DespiertaSleepSurface),
+        border = BorderStroke(1.dp, DespiertaSky.copy(alpha = 0.32f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = DespiertaSky.copy(alpha = 0.14f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.Bedtime,
+                        contentDescription = null,
+                        tint = DespiertaSky,
+                        modifier = Modifier.size(25.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "DESCANSO ESTIMADO",
+                    color = DespiertaSky,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.9.sp
+                )
+                Text(
+                    sleepWindow ?: "Sin próxima alarma",
+                    fontSize = if (sleepWindow == null) 18.sp else 27.sp,
+                    lineHeight = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("sleep_duration_value")
+                )
+                Text(
+                    guidance,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
                 )
             }
         }
@@ -1373,16 +1439,18 @@ internal fun DespiertaTheme(content: @Composable () -> Unit) {
         colorScheme = darkColorScheme(
             primary = DespiertaAccent,
             onPrimary = DespiertaOnAccent,
-            primaryContainer = Color(0xFF4B321D),
-            onPrimaryContainer = Color(0xFFFFDDBD),
-            secondary = DespiertaAccent,
-            onSecondary = DespiertaOnAccent,
-            background = Color(0xFF0C0E12),
-            surface = Color(0xFF15181E),
-            surfaceVariant = Color(0xFF22262E),
-            onSurface = Color(0xFFF4F1EB),
-            onSurfaceVariant = Color(0xFFAAAEB7),
-            outline = Color(0xFF4A4F59),
+            primaryContainer = Color(0xFF332B57),
+            onPrimaryContainer = Color(0xFFE9DDFF),
+            secondary = DespiertaSky,
+            onSecondary = Color(0xFF001B3D),
+            secondaryContainer = Color(0xFF18345E),
+            onSecondaryContainer = Color(0xFFD7E3FF),
+            background = Color(0xFF070B19),
+            surface = Color(0xFF101524),
+            surfaceVariant = Color(0xFF1B2136),
+            onSurface = Color(0xFFF4F1FF),
+            onSurfaceVariant = Color(0xFFBEC3D8),
+            outline = Color(0xFF555D78),
             error = Color(0xFFFFB4AB),
             errorContainer = Color(0xFF5B2525),
             onErrorContainer = Color(0xFFFFDAD6)
@@ -1431,8 +1499,23 @@ internal fun formatCountdown(remainingMillis: Long): String {
     }
 }
 
+internal fun formatSleepDuration(remainingMillis: Long): String {
+    val totalMinutes = (remainingMillis.coerceAtLeast(0L) + 59_999L) / 60_000L
+    val days = totalMinutes / (24L * 60L)
+    val hours = totalMinutes % (24L * 60L) / 60L
+    val minutes = totalMinutes % 60L
+    return when {
+        days > 0L -> "%d d · %d h %02d min".format(days, hours, minutes)
+        hours > 0L -> "%d h %02d min".format(hours, minutes)
+        minutes > 0L -> "%d min".format(minutes)
+        else -> "Ahora"
+    }
+}
+
 private val SPANISH = Locale("es", "ES")
-private val DespiertaAccent = Color(0xFFFFB66D)
-private val DespiertaOnAccent = Color(0xFF2C1704)
-private val DespiertaHero = Color(0xFF171A20)
-private val DespiertaActiveSurface = Color(0xFF1B1917)
+private val DespiertaAccent = Color(0xFFC4B5FD)
+private val DespiertaOnAccent = Color(0xFF21153F)
+private val DespiertaSky = Color(0xFF82B1FF)
+private val DespiertaHero = Color(0xFF0D1630)
+private val DespiertaSleepSurface = Color(0xFF101B35)
+private val DespiertaActiveSurface = Color(0xFF171A34)
