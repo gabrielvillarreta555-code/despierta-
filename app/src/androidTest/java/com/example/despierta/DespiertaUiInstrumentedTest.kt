@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.rule.GrantPermissionRule
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -23,6 +24,11 @@ class DespiertaUiInstrumentedTest {
 
     @get:Rule(order = 1)
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Before
+    fun setUp() {
+        composeRule.mainClock.autoAdvance = false
+    }
 
     @Test
     fun versionAndPrimaryNavigationAreVisible() {
